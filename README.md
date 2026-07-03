@@ -48,6 +48,24 @@ brain --repo ./mybrain check "bet the account" --reward 0.95 --signal ruin_risk=
 #   → allowed:false  alarm:true  vetoed_by:[never-ruin]   ("winning is actually losing")
 ```
 
+## Endpoints (optional — works fully offline without them)
+
+By default the CLI runs with **no network**: deterministic hashing recall, no
+reranker, no LLM. To upgrade, drop an `endpoints.json` in the brain repo
+(`init` writes an `endpoints.example.json` to copy):
+
+```json
+{
+  "embedding": {"base_url": "http://localhost:11434/v1", "model": "bge-m3", "api_key_env": "OLLAMA_API_KEY"},
+  "reranker":  {"base_url": "http://localhost:11434", "model": "bge-reranker-v2-m3", "api_key_env": ""},
+  "llm":       {"base_url": "http://localhost:11434/v1", "model": "qwen2.5", "api_key_env": ""}
+}
+```
+
+Each block is independent. `api_key_env` names an env var — the key is read at
+runtime and never stored or printed. Env overrides: `BRAIN_EMBED_URL`,
+`BRAIN_RERANK_URL`, `BRAIN_LLM_URL` (+ `_MODEL`, `_KEY_ENV`).
+
 ## The brain on disk (all git-friendly plain text)
 
 ```

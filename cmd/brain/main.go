@@ -32,6 +32,9 @@ var embeddedSkill []byte
 //go:embed skill/config.example.json
 var embeddedConfig []byte
 
+//go:embed skill/endpoints.example.json
+var embeddedEndpoints []byte
+
 func main() {
 	if len(os.Args) < 2 {
 		usage()
@@ -133,9 +136,14 @@ func openBrain(repo string) *engine.Brain {
 	if ns == "" || ns == "." {
 		ns = "default"
 	}
-	// No LLM and the deterministic hashing embedder: the CLI needs no endpoint.
-	// The agent (the real LLM) rephrases if it wants; the CLI stays deterministic.
-	return engine.NewWithStore(engine.HashEmbedding{}, nil, ns, loadConstraints(repo), 0.5, fs, now)
+	// Endpoints are opt-in (endpoints.json / env). With none, this is the offline
+	// deterministic path: hashing embedder, no reranker, no LLM — nothing to run.
+	embedder, llm, reranker := buildModels(loadEndpoints(repo))
+	b := engine.NewWithStore(embedder, llm, ns, loadConstraints(repo), 0.5, fs, now)
+	if reranker != nil {
+		b.SetReranker(reranker)
+	}
+	return b
 }
 
 // --- constraints (declarative, serializable) --------------------------------
@@ -190,6 +198,12 @@ func cmdInit(repo string) {
 		}
 		data, _ := json.MarshalIndent(starter, "", "  ")
 		_ = os.WriteFile(path, data, 0o644)
+	}
+	// Drop an endpoints example (offline by default — rename to endpoints.json to
+	// enable a real embedding / reranker / LLM). The brain works without it.
+	exPath := filepath.Join(repo, "endpoints.example.json")
+	if _, err := os.Stat(exPath); os.IsNotExist(err) {
+		_ = os.WriteFile(exPath, embeddedEndpoints, 0o644)
 	}
 	// Touch the store so the folder is a valid brain immediately.
 	openBrain(repo)

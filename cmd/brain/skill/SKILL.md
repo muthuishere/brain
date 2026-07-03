@@ -93,6 +93,30 @@ repos in `config.json`. Never merge two brains' folders; to share across agents,
 share the *same* repo (commit/pull), and let conflicting experiences surface as
 conflicts rather than averaging them.
 
+## Optional endpoints (embedding / reranker / LLM)
+
+The brain works **fully offline** by default (deterministic hashing recall, no
+model calls) — you need nothing. To upgrade recall, drop an `endpoints.json` in
+the brain repo (an `endpoints.example.json` is created by `init`):
+
+```json
+{
+  "embedding": {"base_url": "http://localhost:11434/v1", "model": "bge-m3", "api_key_env": "OLLAMA_API_KEY"},
+  "reranker":  {"base_url": "http://localhost:11434", "model": "bge-reranker-v2-m3", "api_key_env": ""},
+  "llm":       {"base_url": "http://localhost:11434/v1", "model": "qwen2.5", "api_key_env": ""}
+}
+```
+
+- **embedding** → semantic recall instead of keyword-ish hashing.
+- **reranker** → reorders recalled episodes by relevance.
+- **llm** → synthesizes the grounded answer (still faithfulness-gated; still abstains).
+
+Each block is independent — set any subset. `api_key_env` NAMES an env var; the
+CLI reads the key from it at run time and never stores or prints it. Env
+overrides also work: `BRAIN_EMBED_URL` / `BRAIN_EMBED_MODEL` / `BRAIN_EMBED_KEY_ENV`
+(and `BRAIN_RERANK_*`, `BRAIN_LLM_*`). Commit `endpoints.json` only if it holds no
+secrets (it shouldn't — keys live in env).
+
 ## Reading raw memory
 
 The repo is plain files — inspect or grep directly:

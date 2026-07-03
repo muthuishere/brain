@@ -107,6 +107,7 @@ type Recall struct {
 type Brain struct {
 	embedder     Embedder
 	llm          LLM
+	reranker     Reranker
 	namespace    string
 	store        Store
 	lossAversion float64
@@ -114,6 +115,16 @@ type Brain struct {
 	shield       Shield
 	now          func() float64
 }
+
+// Reranker reorders recalled candidates by relevance to the query. Optional — a
+// nil reranker leaves the salience/recency/relevance ordering untouched, so the
+// brain works fully offline without one.
+type Reranker interface {
+	Rerank(query string, candidates []Recalled) []Recalled
+}
+
+// SetReranker plugs in an optional reranker (e.g. an HTTP reranker endpoint).
+func (b *Brain) SetReranker(r Reranker) { b.reranker = r }
 
 // New builds a brain backed by an in-memory store. Pass fakes.FakeEmbedding{} and
 // fakes.FakeLLM{} to run offline. Use NewWithStore for a persistent (file) store.
@@ -223,6 +234,10 @@ func (b *Brain) recall(question string, k int) []Recalled {
 		}
 		return out[i].Episode.Version > out[j].Episode.Version
 	})
+	// Optional reranker refines the ordering; absent one, keep the score order.
+	if b.reranker != nil && len(out) > 0 {
+		out = b.reranker.Rerank(question, out)
+	}
 	if len(out) > k {
 		out = out[:k]
 	}

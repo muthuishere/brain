@@ -30,11 +30,11 @@ jobs:
             name="brain_${os}_${arch}"
             echo "building $name"
             if [ "$os" = "windows" ]; then
-              GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -o "brain.exe" .
+              GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -o "brain.exe" ./cmd/brain
               zip -q "dist/${name}.zip" brain.exe
               rm -f brain.exe
             else
-              GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -o "brain" .
+              GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -o "brain" ./cmd/brain
               tar -czf "dist/${name}.tar.gz" brain
               rm -f brain
             fi
