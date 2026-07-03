@@ -1,0 +1,51 @@
+name: release
+
+# Tag a version (vX.Y.Z) → cross-compile the brain CLI for every OS/arch and
+# publish the binaries to a GitHub Release. install.sh / install.cmd download
+# these assets.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+
+      - name: Build all platforms
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          targets="darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64"
+          for t in $targets; do
+            os="${t%/*}"; arch="${t#*/}"
+            name="brain_${os}_${arch}"
+            echo "building $name"
+            if [ "$os" = "windows" ]; then
+              GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -o "brain.exe" .
+              zip -q "dist/${name}.zip" brain.exe
+              rm -f brain.exe
+            else
+              GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -o "brain" .
+              tar -czf "dist/${name}.tar.gz" brain
+              rm -f brain
+            fi
+          done
+          ( cd dist && shasum -a 256 * > checksums.txt )
+          ls -la dist
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes
