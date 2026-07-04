@@ -23,6 +23,17 @@ the audit trail**.
   rather than reimplemented.
 - Design + research: [`docs/BRAIN.md`](docs/BRAIN.md).
 
+## Status — what's ready today
+
+| Capability | Status |
+|---|---|
+| **Git/file storage** | ✅ Ready, default and only storage path the CLI uses. `engine.FileStore` persists `episodes.ndjson`/`convictions.json`/`objective.json` as plain files in a folder — commit that folder yourself, `git log` is the audit trail. |
+| **Agent skill** | ✅ Ready. `brain install-skills` embeds and installs the skill (below) into `~/.claude/skills/brain`. |
+| **Offline recall (hash embedding)** | ✅ Ready, zero network by default. |
+| **Optional embedding/reranker/LLM endpoints** | ✅ Ready (`libs/go/modelclients`), opt-in via `endpoints.json`. |
+| **S3 / object storage** (`libs/go/storage`) | ⚠️ Library-only. `S3Backend`/`LocalFsBackend` implement a generic bytes/JSON blob interface and are usable from Go code, but there is **no `engine.Store` implementation on S3 yet** and **no `--store s3` CLI flag** — `brain --repo` always uses the local file store today. |
+| **Web crawl / file chunking** (`libs/go/ingest`) | ⚠️ Library-only. `Fetch`/`Crawl`/`ChunkFile` are implemented and tested, but no CLI command wires them into `record` yet — call them from Go if you want ingest today. |
+
 ## Install
 
 Prebuilt binaries from GitHub Releases — no Go toolchain needed. The installer
@@ -74,6 +85,38 @@ reranker, no LLM. To upgrade, drop an `endpoints.json` in the brain repo
 Each block is independent. `api_key_env` names an env var — the key is read at
 runtime and never stored or printed. Env overrides: `BRAIN_EMBED_URL`,
 `BRAIN_RERANK_URL`, `BRAIN_LLM_URL` (+ `_MODEL`, `_KEY_ENV`).
+
+## Agent skill
+
+`brain install-skills` installs [`skills/brain/SKILL.md`](skills/brain/SKILL.md)
+into `~/.claude/skills/brain/SKILL.md` and seeds `~/.config/brain/config.json`
+(a `{default, brains: {name: repoPath}}` map so an agent can resolve "the
+crypto brain" → a repo folder). Once installed, an agent should:
+
+1. **Resolve the brain**: look up the named brain in `~/.config/brain/config.json`
+   (or the default), and always pass `--repo "$REPO" --json`.
+2. **Use the command table**: `objective` (set the goal), `record` (log an
+   experience with `--reward`), `reappraise` (flip a past judgment),
+   `recall`/`learn` (grounded, cite-or-abstain answers), `check` (the
+   constraint shield — pass `--signal name=value` for measured risk signals),
+   `consolidate` (distil repeated experience into convictions), `convictions`
+   (list current beliefs).
+3. **Commit after every mutation** — `objective`/`record`/`reappraise`/`consolidate`
+   change the repo; `git add -A && git commit` right after so git history stays
+   the audit trail. `recall`/`learn`/`check`/`convictions` are read-only, no commit.
+4. **Honor `check`'s verdict literally**: `"allowed": false` → don't take the
+   decision, offer `"fallback"` instead. `"alarm": true` → "profitable but
+   ruinous" — the loudest signal, surface it to the human rather than
+   proceeding quietly. `"guaranteed": true` → every constraint was
+   self-evaluated in code; if false, some cost came from outside and the
+   verdict is advisory.
+5. **Keep multiple brains isolated** — each is its own git repo; never merge
+   two brains' folders. To share one brain across agents, share the same repo
+   (commit/pull) and let conflicting experiences surface as conflicts instead
+   of being averaged away.
+
+Full behavioral spec (constraints format, endpoint config, reading raw memory
+directly): [`skills/brain/SKILL.md`](skills/brain/SKILL.md).
 
 ## The brain on disk (all git-friendly plain text)
 
