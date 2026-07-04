@@ -1,0 +1,17 @@
+{
+  "embedding": {
+    "base_url": "http://localhost:11434/v1",
+    "model": "bge-m3",
+    "api_key_env": ""
+  },
+  "reranker": {
+    "base_url": "http://localhost:11434",
+    "model": "bge-reranker-v2-m3",
+    "api_key_env": ""
+  },
+  "llm": {
+    "base_url": "http://localhost:11434/v1",
+    "model": "qwen2.5",
+    "api_key_env": ""
+  }
+}

@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"github.com/muthuishere/citenexus/golang/gate"
+
 	"sort"
 )
 
@@ -38,7 +40,7 @@ func ClusterByTokens(episodes []Episode, minShared int) [][]Episode {
 	}
 	toks := make([]map[string]struct{}, n)
 	for i, e := range eps {
-		toks[i] = ContentTokens(e.Cue + " " + e.Text)
+		toks[i] = gate.ContentTokens(e.Cue + " " + e.Text)
 	}
 	for i := 0; i < n; i++ {
 		for j := i + 1; j < n; j++ {

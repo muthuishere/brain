@@ -15,6 +15,9 @@ import (
 	"math"
 	"sort"
 	"strings"
+
+	"github.com/muthuishere/citenexus/golang/fakes"
+	"github.com/muthuishere/citenexus/golang/gate"
 )
 
 // Embedder turns text into a vector (a real endpoint, or fakes.FakeEmbedding).
@@ -201,7 +204,7 @@ func (b *Brain) Ask(question string, k int) Recall {
 			Conflict: conflict, Episodes: ranked}
 	}
 	draft := b.llm.Answer(question, top.Text)
-	if !IsSupported(draft, top.Text) {
+	if !gate.IsSupported(draft, top.Text) {
 		return Recall{Question: question, Answer: b.cantAnswer(), Grounded: false,
 			Reason: "recalled experience did not support a grounded answer"}
 	}
@@ -221,8 +224,8 @@ func (b *Brain) recall(question string, k int) []Recalled {
 		if len(emb) == 0 { // reloaded from disk — recompute deterministically
 			emb = b.embedder.Embed(ep.Cue)
 		}
-		rel := Cosine(q, emb)
-		if !HasRelevanceOverlap(question, ep.Cue) && !HasRelevanceOverlap(question, ep.Text) {
+		rel := fakes.Cosine(q, emb)
+		if !gate.HasRelevanceOverlap(question, ep.Cue) && !gate.HasRelevanceOverlap(question, ep.Text) {
 			continue
 		}
 		score := rel + Importance(BaseSalience(ep.Outcome, b.lossAversion, b.scale))
@@ -371,7 +374,7 @@ func (b *Brain) distill(supporting []Episode) string {
 	}
 	union := strings.Join(distinct, " ")
 	draft := b.llm.Answer("What is the recurring lesson here?", union)
-	if IsSupported(draft, union) {
+	if gate.IsSupported(draft, union) {
 		return draft
 	}
 	return anchor

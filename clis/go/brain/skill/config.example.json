@@ -1,0 +1,7 @@
+{
+  "default": "default",
+  "brains": {
+    "default": "~/brains/default",
+    "crypto": "~/brains/crypto-desk"
+  }
+}

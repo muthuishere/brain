@@ -1,18 +1,27 @@
-# brain — the CiteNexus Brain CLI
+# brain
 
-A standalone, dependency-light Go CLI that turns a **folder (a git repo) into a
-persistent, evidence-first brain**. It records experiences, recalls grounded
+A Go library and CLI that turns a **folder (a git repo) into a persistent,
+evidence-first brain**. It records experiences, recalls grounded
 cite-or-abstain answers, distils repeated experience into validated convictions,
 and runs a **deterministic constraint shield** that vetoes "profitable but
 ruinous" decisions.
 
-No network. No model endpoint. The CLI is the deterministic engine; an **agent**
-(a real LLM, via the bundled [skill](skill/SKILL.md)) is the reasoning layer, and
-**git history is the audit trail**.
+No network required. No model endpoint required. The engine is the
+deterministic core; an **agent** (a real LLM, via the bundled
+[skill](skills/brain/SKILL.md)) is the reasoning layer, and **git history is
+the audit trail**.
 
-Design + research: [`../rag-cite-nexus/docs/BRAIN.md`](../rag-cite-nexus/docs/BRAIN.md).
-Engine library: `github.com/muthuishere/citenexus-go/brain` (Python reference:
-`citenexus.brain`).
+- **Library**: `github.com/muthuishere/brain/libs/go/engine` — the brain
+  engine (episodic memory, shield, consolidation). Also `libs/go/storage`
+  (local + S3-compatible object storage), `libs/go/ingest` (web crawl + file
+  chunking), and `libs/go/modelclients` (optional HTTP embedding/reranker/LLM
+  clients).
+- **CLI**: `github.com/muthuishere/brain/clis/go/brain` — a thin binary over
+  the library.
+- Chunking/tokenizing are delegated to the tested
+  [`citenexus/golang`](https://github.com/muthuishere/citenexus) module
+  rather than reimplemented.
+- Design + research: [`docs/BRAIN.md`](docs/BRAIN.md).
 
 ## Install
 
@@ -30,7 +39,7 @@ curl -fsSL https://raw.githubusercontent.com/muthuishere/brain/main/install.sh |
 curl -fsSL -o install.cmd https://raw.githubusercontent.com/muthuishere/brain/main/install.cmd && install.cmd
 ```
 
-Already have Go? `go install github.com/muthuishere/brain@latest && brain install-skills` also works.
+Already have Go? `go install github.com/muthuishere/brain/clis/go/brain@latest && brain install-skills` also works.
 
 Release binaries are built for darwin/linux/windows (amd64 + arm64) by
 [`.github/workflows/release.yml`](.github/workflows/release.yml) on every `v*` tag.

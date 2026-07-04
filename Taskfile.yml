@@ -1,0 +1,52 @@
+version: '3'
+
+vars:
+  CLI_DIR: clis/go/brain
+  SKILL_SRC: skills/brain
+  SKILL_DST: clis/go/brain/skill
+
+tasks:
+  sync-skill:
+    desc: Copy the canonical skills/brain/* into clis/go/brain/skill/* (go:embed can't reach outside its package dir)
+    cmds:
+      - mkdir -p {{.SKILL_DST}}
+      - cp {{.SKILL_SRC}}/SKILL.md {{.SKILL_DST}}/SKILL.md
+      - cp {{.SKILL_SRC}}/config.example.json {{.SKILL_DST}}/config.example.json
+      - cp {{.SKILL_SRC}}/endpoints.example.json {{.SKILL_DST}}/endpoints.example.json
+    sources:
+      - "{{.SKILL_SRC}}/*"
+    generates:
+      - "{{.SKILL_DST}}/SKILL.md"
+      - "{{.SKILL_DST}}/config.example.json"
+      - "{{.SKILL_DST}}/endpoints.example.json"
+
+  vet:
+    desc: go vet the whole module
+    deps: [sync-skill]
+    cmds:
+      - go vet ./...
+
+  build:
+    desc: Build the brain CLI
+    deps: [sync-skill]
+    cmds:
+      - go build -o brain ./{{.CLI_DIR}}
+
+  test:
+    desc: Run all tests
+    deps: [sync-skill]
+    cmds:
+      - go test ./...
+
+  ci:
+    desc: What CI runs — vet, build, test
+    cmds:
+      - task: vet
+      - task: build
+      - task: test
+
+  install-skills:
+    desc: Install the agent skill + config locally via the built binary
+    deps: [build]
+    cmds:
+      - ./brain install-skills

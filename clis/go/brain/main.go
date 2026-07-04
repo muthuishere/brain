@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/muthuishere/brain/engine"
+	"github.com/muthuishere/brain/libs/go/engine"
 )
 
 //go:embed skill/SKILL.md
