@@ -1,0 +1,134 @@
+[
+  {
+    "name": "signal-present-safe",
+    "constraints": [
+      {"name": "never-ruin", "kind": "hard", "signal": "ruin_risk", "threshold": 0.5, "weight": 1}
+    ],
+    "signals": {"ruin_risk": 0},
+    "objective_reward": 1,
+    "high_reward": 10,
+    "fallback": "fallback",
+    "expect": {
+      "allowed": true, "alarm": false, "undetermined": false, "undetermined_by": [],
+      "vetoed_by": [], "penalized_by": [], "guaranteed": true
+    }
+  },
+  {
+    "name": "signal-present-violating",
+    "constraints": [
+      {"name": "never-ruin", "kind": "hard", "signal": "ruin_risk", "threshold": 0.5, "weight": 1}
+    ],
+    "signals": {"ruin_risk": 1},
+    "objective_reward": 1,
+    "high_reward": 10,
+    "fallback": "fallback",
+    "expect": {
+      "allowed": false, "alarm": false, "undetermined": false, "undetermined_by": [],
+      "vetoed_by": ["never-ruin"], "penalized_by": [], "guaranteed": true
+    }
+  },
+  {
+    "name": "bet-the-account-regression",
+    "constraints": [
+      {"name": "never-ruin", "kind": "hard", "signal": "ruin_risk", "threshold": 0.5, "weight": 1},
+      {"name": "never-n1", "kind": "hard", "signal": "unrepeated", "threshold": 0.5, "weight": 1}
+    ],
+    "signals": {},
+    "objective_reward": 0.95,
+    "high_reward": 0.5,
+    "fallback": "safe-fallback",
+    "expect": {
+      "allowed": false, "alarm": true, "undetermined": true,
+      "undetermined_by": ["never-n1", "never-ruin"],
+      "vetoed_by": [], "penalized_by": [], "guaranteed": false
+    }
+  },
+  {
+    "name": "signal-absent-assume-safe-optin",
+    "constraints": [
+      {"name": "never-ruin", "kind": "hard", "signal": "ruin_risk", "threshold": 0.5, "weight": 1, "when_absent": "assume_safe"}
+    ],
+    "signals": {},
+    "objective_reward": 1,
+    "high_reward": 10,
+    "fallback": "fallback",
+    "expect": {
+      "allowed": true, "alarm": false, "undetermined": false, "undetermined_by": [],
+      "vetoed_by": [], "penalized_by": [], "guaranteed": false
+    }
+  },
+  {
+    "name": "soft-signal-absent-default-assume-safe",
+    "constraints": [
+      {"name": "prefer-diversified", "kind": "soft", "signal": "concentration", "threshold": 0.7, "weight": 1}
+    ],
+    "signals": {},
+    "objective_reward": 1,
+    "high_reward": 100,
+    "fallback": "fallback",
+    "expect": {
+      "allowed": true, "alarm": false, "undetermined": false, "undetermined_by": [],
+      "vetoed_by": [], "penalized_by": [], "guaranteed": false
+    }
+  },
+  {
+    "name": "unbound-soft",
+    "constraints": [
+      {"name": "unbound", "kind": "soft", "threshold": 1, "weight": 1}
+    ],
+    "signals": {},
+    "objective_reward": 1,
+    "high_reward": 100,
+    "fallback": "fallback",
+    "expect": {
+      "allowed": true, "alarm": false, "undetermined": false, "undetermined_by": [],
+      "vetoed_by": [], "penalized_by": [], "guaranteed": false
+    }
+  },
+  {
+    "name": "soft-penalty-math",
+    "constraints": [
+      {"name": "mild-strain", "kind": "soft", "signal": "risk", "threshold": 0.3, "weight": 2}
+    ],
+    "signals": {"risk": 0.8},
+    "objective_reward": 10,
+    "high_reward": 100,
+    "fallback": "fallback",
+    "expect": {
+      "allowed": true, "alarm": false, "undetermined": false, "undetermined_by": [],
+      "vetoed_by": [], "penalized_by": ["mild-strain"], "guaranteed": true,
+      "adjusted_reward": 9
+    }
+  },
+  {
+    "name": "mixed-hard-and-soft",
+    "constraints": [
+      {"name": "hard-veto", "kind": "hard", "signal": "ruin", "threshold": 0.5, "weight": 1},
+      {"name": "soft-penalty", "kind": "soft", "signal": "strain", "threshold": 0.2, "weight": 3}
+    ],
+    "signals": {"ruin": 0.9, "strain": 0.6},
+    "objective_reward": 20,
+    "high_reward": 1000,
+    "fallback": "the-fallback",
+    "expect": {
+      "allowed": false, "alarm": false, "undetermined": false, "undetermined_by": [],
+      "vetoed_by": ["hard-veto"], "penalized_by": ["soft-penalty"], "guaranteed": true,
+      "adjusted_reward": 18.8
+    }
+  },
+  {
+    "name": "alarm-boundary-soft-violation-at-high-reward",
+    "constraints": [
+      {"name": "violator", "kind": "soft", "signal": "v", "threshold": 0.1, "weight": 1}
+    ],
+    "signals": {"v": 0.9},
+    "objective_reward": 50,
+    "high_reward": 50,
+    "fallback": "fallback",
+    "expect": {
+      "allowed": true, "alarm": true, "undetermined": false, "undetermined_by": [],
+      "vetoed_by": [], "penalized_by": ["violator"], "guaranteed": true,
+      "adjusted_reward": 49.2
+    }
+  }
+]
