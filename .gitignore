@@ -2,3 +2,7 @@
 /brain.exe
 /dist/
 .task/
+
+# demo videos (internal CEO review artifacts — binary, not committed)
+/ceo/demos/
+*.mp4

@@ -124,14 +124,14 @@ func TestShield_AlarmBoundaryAtHighReward(t *testing.T) {
 }
 
 func TestVerdict_GuaranteedTrueWhenAllEvaluationsDeterministic(t *testing.T) {
-	checkBased := costConstraint("checked", Soft, 1.0, 1.0, 0.0) // Check-sourced, deterministic
+	checkBased := costConstraint("checked", Soft, 1.0, 1.0, 0.0) // Check-sourced -> Computed
 	signalBased := Constraint{
 		Name:      "signalled",
 		Text:      "signalled text",
 		Kind:      Soft,
 		Threshold: 1.0,
 		Weight:    1.0,
-		Signal:    "risk", // Signal-sourced; cost() marks this deterministic=true too
+		Signal:    "risk", // Signal supplied in ctx -> Provided
 	}
 	shield := Shield{constraints: []Constraint{checkBased, signalBased}, highReward: 100}
 	ctx := DecisionContext{Text: "x", Signals: map[string]float64{"risk": 0.2}}
@@ -142,26 +142,26 @@ func TestVerdict_GuaranteedTrueWhenAllEvaluationsDeterministic(t *testing.T) {
 		t.Fatalf("expected 2 evaluations, got %d", len(v.Evaluations))
 	}
 	for _, e := range v.Evaluations {
-		if !e.Deterministic {
-			t.Fatalf("expected evaluation %q to be Deterministic, got false", e.Name)
+		if !e.Deterministic() {
+			t.Fatalf("expected evaluation %q to be Deterministic, got false (provenance=%v)", e.Name, e.Provenance)
 		}
 	}
 	if !v.Guaranteed() {
-		t.Fatalf("expected Guaranteed()=true when every constraint is Check- or Signal-sourced")
+		t.Fatalf("expected Guaranteed()=true when every constraint is Computed- or Provided-sourced")
 	}
 }
 
 func TestVerdict_GuaranteedFalseWhenAnyEvaluationUndetermined(t *testing.T) {
 	checkBased := costConstraint("checked", Soft, 1.0, 1.0, 0.0)
-	undetermined := Constraint{
-		Name:      "undetermined",
+	unbound := Constraint{
+		Name:      "unbound",
 		Text:      "neither Check nor Signal set",
 		Kind:      Soft,
 		Threshold: 1.0,
 		Weight:    1.0,
-		// Neither Check nor Signal set -> cost() returns (0, false).
+		// Neither Check nor Signal set -> cost() returns (0, Unbound).
 	}
-	shield := Shield{constraints: []Constraint{checkBased, undetermined}, highReward: 100}
+	shield := Shield{constraints: []Constraint{checkBased, unbound}, highReward: 100}
 	ctx := DecisionContext{Text: "x"}
 
 	v := shield.Evaluate(ctx, 1, "fallback")
@@ -171,6 +171,13 @@ func TestVerdict_GuaranteedFalseWhenAnyEvaluationUndetermined(t *testing.T) {
 	}
 	if v.Guaranteed() {
 		t.Fatalf("expected Guaranteed()=false when at least one evaluated constraint has neither Check nor Signal")
+	}
+	// Unbound always behaves as assume_safe: never blocks, regardless of kind.
+	if !v.Allowed {
+		t.Fatalf("expected Allowed=true: an Unbound constraint must not block (it cannot fail closed on nothing)")
+	}
+	if v.Undetermined {
+		t.Fatalf("expected Verdict.Undetermined=false for a Soft Unbound constraint (only Hard absent-signal fails closed)")
 	}
 }
 
@@ -228,5 +235,150 @@ func TestShield_MixedHardAndSoft_HardVetoesButPenaltyStillAccrues(t *testing.T) 
 	}
 	if !softFound {
 		t.Fatalf("expected PenalizedBy to contain %q, got %v", "soft-penalty", v.PenalizedBy)
+	}
+}
+
+// --- SPEC-shield-signal-provenance-v1 §6: the regression suite for the
+// fail-closed fix. never-ruin mirrors the SPEC's own worked example: a Hard
+// constraint that reads its cost from a "ruin_risk" signal the caller supplies.
+
+func neverRuin(whenAbsent string) Constraint {
+	return Constraint{
+		Name: "never-ruin", Text: "never risk ruin", Kind: Hard,
+		Threshold: 0.5, Weight: 1.0, Signal: "ruin_risk", WhenAbsent: whenAbsent,
+	}
+}
+
+// 1. Present-and-safe: the signal is supplied and 0 -> allowed, guaranteed,
+// determined -- distinguishing a genuinely safe measurement from a missing one.
+func TestShield_SignalPresentAndSafe(t *testing.T) {
+	shield := Shield{constraints: []Constraint{neverRuin("")}, highReward: 10}
+	v := shield.Evaluate(DecisionContext{Text: "x", Signals: map[string]float64{"ruin_risk": 0}}, 1, "fallback")
+
+	if !v.Allowed {
+		t.Fatalf("expected Allowed=true, got false (reasons=%v)", v.Reasons)
+	}
+	if !v.Guaranteed() {
+		t.Fatalf("expected Guaranteed()=true: the signal was actually supplied")
+	}
+	if v.Undetermined {
+		t.Fatalf("expected Undetermined=false, got true")
+	}
+}
+
+// 2. Present-and-violating: the signal is supplied and over threshold -> veto.
+func TestShield_SignalPresentAndViolating(t *testing.T) {
+	shield := Shield{constraints: []Constraint{neverRuin("")}, highReward: 10}
+	v := shield.Evaluate(DecisionContext{Text: "x", Signals: map[string]float64{"ruin_risk": 1}}, 1, "fallback")
+
+	if v.Allowed {
+		t.Fatalf("expected Allowed=false, got true")
+	}
+	if len(v.VetoedBy) != 1 || v.VetoedBy[0] != "never-ruin" {
+		t.Fatalf("expected VetoedBy=[never-ruin], got %v", v.VetoedBy)
+	}
+}
+
+// 3. THE BUG'S REGRESSION TEST: a hard constraint's signal is simply omitted.
+// Pre-fix this silently returned allowed:true, guaranteed:true. It must now
+// fail closed: undetermined, not allowed, and honestly not guaranteed.
+func TestShield_SignalAbsent_DefaultVetoFailsClosed(t *testing.T) {
+	shield := Shield{constraints: []Constraint{neverRuin("")}, highReward: 10}
+	v := shield.Evaluate(DecisionContext{Text: "bet the account"}, 0.95, "safe-fallback")
+
+	if v.Allowed {
+		t.Fatalf("REGRESSION: an omitted required signal must not silently pass, got Allowed=true")
+	}
+	if !v.Undetermined {
+		t.Fatalf("expected Undetermined=true")
+	}
+	if len(v.UndeterminedBy) != 1 || v.UndeterminedBy[0] != "never-ruin" {
+		t.Fatalf("expected UndeterminedBy=[never-ruin], got %v", v.UndeterminedBy)
+	}
+	if len(v.VetoedBy) != 0 {
+		t.Fatalf("expected VetoedBy to stay empty (nothing was actually measured as violating), got %v", v.VetoedBy)
+	}
+	if v.Guaranteed() {
+		t.Fatalf("REGRESSION: an undetermined hard constraint must not report Guaranteed()=true")
+	}
+	if v.Fallback != "safe-fallback" {
+		t.Fatalf("expected Fallback to be populated when the decision is blocked, got %q", v.Fallback)
+	}
+}
+
+// 4. Absent + high reward: undetermined is itself alarm-worthy — a high-stakes
+// decision with its safety input missing must not pass quietly.
+func TestShield_SignalAbsent_HighRewardAlarms(t *testing.T) {
+	shield := Shield{constraints: []Constraint{neverRuin("")}, highReward: 0.5}
+	v := shield.Evaluate(DecisionContext{Text: "x"}, 0.95, "fallback")
+	if !v.Alarm {
+		t.Fatalf("expected Alarm=true when reward is high and a hard constraint is undetermined")
+	}
+}
+
+// 5. Absent + explicit assume_safe opt-in on a Hard constraint: the escape
+// hatch is honored, but Guaranteed() still tells the truth about it.
+func TestShield_SignalAbsent_AssumeSafeOptIn(t *testing.T) {
+	shield := Shield{constraints: []Constraint{neverRuin(WhenAbsentAssumeSafe)}, highReward: 10}
+	v := shield.Evaluate(DecisionContext{Text: "x"}, 1, "fallback")
+
+	if !v.Allowed {
+		t.Fatalf("expected Allowed=true (assume_safe opt-in), got false")
+	}
+	if v.Undetermined {
+		t.Fatalf("expected Undetermined=false under assume_safe, got true")
+	}
+	if v.Guaranteed() {
+		t.Fatalf("expected Guaranteed()=false: the cost was assumed, not measured")
+	}
+}
+
+// 6. Soft absent (default policy is assume_safe for Soft): no penalty accrues,
+// but the verdict is honestly non-guaranteed.
+func TestShield_SoftSignalAbsent_DefaultAssumeSafeNoPenalty(t *testing.T) {
+	soft := Constraint{
+		Name: "prefer-diversified", Text: "avoid concentration", Kind: Soft,
+		Threshold: 0.7, Weight: 1.0, Signal: "concentration",
+	}
+	shield := Shield{constraints: []Constraint{soft}, highReward: 100}
+	v := shield.Evaluate(DecisionContext{Text: "x"}, 1, "fallback")
+
+	if len(v.PenalizedBy) != 0 {
+		t.Fatalf("expected no penalty for an absent soft signal (assume_safe default), got %v", v.PenalizedBy)
+	}
+	if v.AdjustedReward != v.ObjectiveReward {
+		t.Fatalf("expected AdjustedReward == ObjectiveReward (no penalty applied), got %v vs %v", v.AdjustedReward, v.ObjectiveReward)
+	}
+	if v.Guaranteed() {
+		t.Fatalf("expected Guaranteed()=false: the soft constraint's cost was never measured")
+	}
+}
+
+// 9. Determinism: identical inputs must produce identical verdicts, and the
+// name lists must be sorted (a guard against any future map-iteration drift).
+func TestShield_DeterministicAndSorted(t *testing.T) {
+	constraints := []Constraint{
+		{Name: "z-first", Text: "z", Kind: Hard, Threshold: 0.5, Weight: 1, Signal: "z"},
+		{Name: "a-second", Text: "a", Kind: Hard, Threshold: 0.5, Weight: 1, Signal: "a"},
+	}
+	shield := Shield{constraints: constraints, highReward: 10}
+	ctx := DecisionContext{Text: "x"} // both signals absent -> both undetermined
+
+	first := shield.Evaluate(ctx, 1, "fallback")
+	for i := 0; i < 5; i++ {
+		v := shield.Evaluate(ctx, 1, "fallback")
+		if v.Allowed != first.Allowed || v.Undetermined != first.Undetermined ||
+			len(v.UndeterminedBy) != len(first.UndeterminedBy) {
+			t.Fatalf("run %d: verdict differs from first run", i)
+		}
+		for j := range v.UndeterminedBy {
+			if v.UndeterminedBy[j] != first.UndeterminedBy[j] {
+				t.Fatalf("run %d: UndeterminedBy order differs: %v vs %v", i, v.UndeterminedBy, first.UndeterminedBy)
+			}
+		}
+	}
+	want := []string{"a-second", "z-first"}
+	if len(first.UndeterminedBy) != 2 || first.UndeterminedBy[0] != want[0] || first.UndeterminedBy[1] != want[1] {
+		t.Fatalf("expected UndeterminedBy sorted %v, got %v", want, first.UndeterminedBy)
 	}
 }

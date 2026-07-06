@@ -39,6 +39,7 @@ the audit trail**.
 | **S3 / object storage** (`libs/go/storage`) | ⚠️ Library-only. `S3Backend`/`LocalFsBackend` implement a generic bytes/JSON blob interface and are usable from Go code, but there is **no `engine.Store` implementation on S3 yet** and **no `--store s3` CLI flag** — `brain --repo` always uses the local file store today. |
 | **File ingest** (`libs/go/ingest`) | ✅ Ready. `brain record --from-file PATH` chunks a local file (`ingest.ChunkFile`, deterministic, no network) and records one episode per chunk. |
 | **Web crawl** (`libs/go/ingest`) | ⚠️ Library-only. `Fetch`/`Crawl` are implemented and tested, but not wired into the CLI — reaching the network from `record` needs its own opt-in design (see [`docs/SPEC-record-from-file-v1.md`](docs/SPEC-record-from-file-v1.md)'s non-goals). Call them from Go if you want web ingest today. |
+| **Constraint shield signal provenance (fail-closed)** | ✅ Ready. A hard constraint's cost is never silently treated as 0/safe when its named `signal` is omitted at `check` time — the verdict reports `undetermined:true`/`undetermined_by` and `allowed:false` instead. Configurable per constraint via `constraints.json`'s `when_absent` (`veto`/`abstain`/`assume_safe`). See [`docs/SPEC-shield-signal-provenance-v1.md`](docs/SPEC-shield-signal-provenance-v1.md). |
 
 ## Install
 
@@ -70,12 +71,21 @@ brain --repo ./mybrain record "Overtrading in chop bled the account" --reward -1
 brain --repo ./mybrain record "Overtrading in chop bled the account again" --reward -1
 brain --repo ./mybrain consolidate          # → distils a validated conviction
 brain --repo ./mybrain recall "overtrading" --json
-brain --repo ./mybrain check "bet the account" --reward 0.95 --signal ruin_risk=1 --json
-#   → allowed:false  alarm:true  vetoed_by:[never-ruin]   ("winning is actually losing")
+brain --repo ./mybrain check "bet the account" --reward 0.95 --signal ruin_risk=1 --signal unrepeated=0 --json
+#   → allowed:false  alarm:true  vetoed_by:[never-ruin]  guaranteed:true   ("winning is actually losing")
 
 # bulk-ingest a doc into episodic memory — one episode per chunk, no network:
 brain --repo ./mybrain record --from-file postmortem.md --reward -1 --label "postmortem"
 ```
+
+`check` requires *every* hard constraint's named `signal` to be supplied above
+(both `ruin_risk` and `unrepeated` — the two starter constraints from `init`) —
+that's what makes `guaranteed:true` meaningful. **Hard constraints fail closed
+by default**: drop `--signal ruin_risk=...` and the shield returns
+`allowed:false, undetermined:true, undetermined_by:["never-ruin"]` instead of
+silently treating the missing signal as safe. See
+[`docs/SPEC-shield-signal-provenance-v1.md`](docs/SPEC-shield-signal-provenance-v1.md)
+for the full rationale and the `when_absent` escape hatch.
 
 ## Endpoints (optional — works fully offline without them)
 
@@ -117,8 +127,13 @@ crypto brain" → a repo folder). Once installed, an agent should:
    decision, offer `"fallback"` instead. `"alarm": true` → "profitable but
    ruinous" — the loudest signal, surface it to the human rather than
    proceeding quietly. `"guaranteed": true` → every constraint was
-   self-evaluated in code; if false, some cost came from outside and the
-   verdict is advisory.
+   self-evaluated in code from a real supplied input; if false, some cost came
+   from outside the code or was never supplied. `"undetermined": true` → treat
+   exactly like `"allowed": false` (don't take the decision, use the
+   fallback) — it means a required hard constraint's signal was never passed
+   with `--signal`, so the shield couldn't tell if the decision was safe,
+   fails closed by default (`docs/SPEC-shield-signal-provenance-v1.md`), and
+   `"undetermined_by"` names which constraints were unresolved.
 5. **Keep multiple brains isolated** — each is its own git repo; never merge
    two brains' folders. To share one brain across agents, share the same repo
    (commit/pull) and let conflicting experiences surface as conflicts instead

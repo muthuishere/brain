@@ -88,6 +88,9 @@ usage: brain [--repo DIR] <command> [args]
 
 commands:
   init                              create the brain folder + starter constraints.json
+                                     (constraints.json fields: name, text, kind, signal,
+                                     threshold, weight, when_absent — "veto"|"abstain"|
+                                     "assume_safe", default "veto" for hard/"assume_safe" for soft)
   objective ["TEXT"]                set the foreground objective (or print it)
   record "TEXT" [--reward R] [--label L] [--dimension D]
   record --from-file PATH [--max-tokens N] [--overlap N] [--reward R] [--label L] [--dimension D] [--json]
@@ -98,6 +101,9 @@ commands:
   recall "QUERY" [-k N] [--json]    grounded, cite-or-abstain recall
   learn "TOPIC" [--json]            what validated convictions cover a topic
   check "DECISION" --reward R [--signal name=val ...] [--fallback F] [--json]
+                                     a hard constraint whose signal is omitted fails
+                                     closed: undetermined:true, allowed:false (see
+                                     constraints.json's when_absent field above)
   consolidate [--min-support N] [--min-consistency C] [--forget] [--json]
   convictions [--json]             the brain's current point of view
   status                           objective + counts
@@ -154,12 +160,13 @@ func openBrain(repo string) *engine.Brain {
 // --- constraints (declarative, serializable) --------------------------------
 
 type constraintFile struct {
-	Name      string  `json:"name"`
-	Text      string  `json:"text"`
-	Kind      string  `json:"kind"`
-	Signal    string  `json:"signal"`
-	Threshold float64 `json:"threshold"`
-	Weight    float64 `json:"weight"`
+	Name       string  `json:"name"`
+	Text       string  `json:"text"`
+	Kind       string  `json:"kind"`
+	Signal     string  `json:"signal"`
+	Threshold  float64 `json:"threshold"`
+	Weight     float64 `json:"weight"`
+	WhenAbsent string  `json:"when_absent"`
 }
 
 func loadConstraints(repo string) []engine.Constraint {
@@ -184,6 +191,7 @@ func loadConstraints(repo string) []engine.Constraint {
 		out = append(out, engine.Constraint{
 			Name: c.Name, Text: c.Text, Kind: kind,
 			Threshold: c.Threshold, Weight: w, Signal: c.Signal,
+			WhenAbsent: c.WhenAbsent,
 		})
 	}
 	return out
@@ -197,6 +205,11 @@ func cmdInit(repo string) {
 	}
 	path := filepath.Join(repo, "constraints.json")
 	if _, err := os.Stat(path); os.IsNotExist(err) {
+		// Both starters are Hard with no explicit when_absent: they rely on the
+		// default fail-closed policy ("veto") — if the caller omits the named
+		// signal at check time, the constraint is Undetermined and the decision
+		// is not allowed, rather than silently passing. See
+		// docs/SPEC-shield-signal-provenance-v1.md.
 		starter := []constraintFile{
 			{Name: "never-ruin", Text: "never risk ruin / irrecoverable loss", Kind: "hard", Signal: "ruin_risk"},
 			{Name: "never-n1", Text: "never act on a single unrepeated result", Kind: "hard", Signal: "unrepeated"},
@@ -368,12 +381,16 @@ func cmdCheck(repo string, args []string) {
 			"allowed": v.Allowed, "alarm": v.Alarm, "vetoed_by": v.VetoedBy,
 			"penalized_by": v.PenalizedBy, "adjusted_reward": v.AdjustedReward,
 			"guaranteed": v.Guaranteed(), "fallback": v.Fallback, "reasons": v.Reasons,
+			"undetermined": v.Undetermined, "undetermined_by": v.UndeterminedBy,
 		})
 		return
 	}
 	fmt.Printf("allowed: %v  ALARM: %v\n", v.Allowed, v.Alarm)
 	if len(v.VetoedBy) > 0 {
 		fmt.Printf("vetoed by: %v\n", v.VetoedBy)
+	}
+	if v.Undetermined {
+		fmt.Printf("UNDETERMINED: %v\n", v.UndeterminedBy)
 	}
 	if v.Fallback != "" {
 		fmt.Printf("instead: %s\n", v.Fallback)
