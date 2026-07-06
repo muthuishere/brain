@@ -45,15 +45,18 @@ runtimes is a separate, larger decision (see the accompanying CYCLE-HUDDLE).
    reference implementation, and giving a template any future port's own
    runner can copy.
 
-## Non-goals (this SPEC)
+## Non-goals (this SPEC, as originally written)
 
-- **No Python/TypeScript/Rust shield implementation.** That is a real,
-  separate, materially larger engineering commitment (new module + test
-  runner + CI wiring in at least one more repo, indefinitely maintained) and
-  is exactly the kind of decision this cycle is flagging to the CEO rather
-  than guessing on.
+- ~~**No Python/TypeScript/Rust shield implementation.**~~ **Superseded** —
+  see Rollout below: the CEO huddle resolved to build them, and they're now
+  landed in this same repo (`libs/python`, `libs/js`, `libs/rust`). Left here
+  for history: at the time this SPEC was first written, that was correctly
+  identified as a real, separate, materially larger commitment not to be
+  guessed on solo — which is exactly why it was raised as a CYCLE-HUDDLE
+  instead of built silently.
 - **No change to `libs/go/engine/shield.go`'s behavior.** This SPEC only adds
-  a fixture format and a test that reads the engine, never writes to it.
+  a fixture format and tests that read the engine (Go and, now, the ports),
+  never writes to its behavior.
 - **No new conformance infrastructure/runner framework.** One JSON file, one
   Go test. If/when other-language ports exist, each gets its own thin runner
   reading the same JSON — no shared code is presumed across languages beyond
@@ -107,12 +110,21 @@ runtimes is a separate, larger decision (see the accompanying CYCLE-HUDDLE).
 
 ## Rollout
 
-1. Land `conformance/cases/shield.json` + the Go runner (this SPEC).
-2. `docs/SPEC-shield-signal-provenance-v1.md`'s "Rung 3" stays exactly
-   as already scoped: a follow-on, gated on an actual decision to build
-   additional-language ports.
-3. CYCLE-HUDDLE: does the CEO want a real Python/TS/Rust shield built now
-   (and if so, in which repo — `brain` gets its own `python/`/`js`/`rust/`
-   dirs, or `rag-cite-nexus` gains a `brain` subpackage per language), or
-   does this stay fixtures-only until receipts-V3 has a concrete, scheduled
-   need to re-run the shield in a non-Go runtime?
+1. ~~Land `conformance/cases/shield.json` + the Go runner (this SPEC).~~ Done.
+2. ~~CYCLE-HUDDLE: does the CEO want a real Python/TS/Rust shield built
+   now...~~ Resolved: yes, build now. Repo-home: inside the `brain` repo
+   itself, mirroring the existing `libs/go/` convention (`libs/python/`,
+   `libs/js/`, `libs/rust/`) — not `rag-cite-nexus`, and without presupposing
+   #35559's still-open standalone-extraction-repo decision.
+3. **Landed**: `libs/python/brain_shield`, `libs/js/brain-shield`,
+   `libs/rust/brain-shield` — each a line-for-line port of `shield.go`'s
+   `Provenance`/`WhenAbsent`/fail-closed logic, each independently verified
+   against every vector in `conformance/cases/shield.json` (including
+   `bet-the-account-regression`), each wired into CI
+   (`.github/workflows/ci.yml`: `shield-conformance-{python,ts,rust}` jobs)
+   so a drifting port fails its own build. Only the shield ported — not the
+   full engine (recall/consolidation/convictions stay Go-only; there is no
+   cross-language episodic memory today).
+4. Follow-on, not done here: wiring these into receipts-V3's actual
+   re-execution path (this SPEC proves parity exists; using it from
+   receipts-V3 is separate integration work).

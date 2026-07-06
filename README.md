@@ -16,6 +16,11 @@ the audit trail**.
   (local + S3-compatible object storage), `libs/go/ingest` (web crawl + file
   chunking), and `libs/go/modelclients` (optional HTTP embedding/reranker/LLM
   clients).
+- **Polyglot shield**: the constraint shield alone (not the full engine) is
+  also ported to `libs/python/brain_shield` (Python), `libs/js/brain-shield`
+  (TypeScript), and `libs/rust/brain-shield` (Rust) — each conforms to the
+  same [`conformance/cases/shield.json`](conformance/cases/shield.json)
+  golden vectors as the Go reference.
 - **CLI**: `github.com/muthuishere/brain/clis/go/brain` — a thin binary over
   the library.
 - Chunking/tokenizing are delegated to the tested
@@ -40,6 +45,7 @@ the audit trail**.
 | **File ingest** (`libs/go/ingest`) | ✅ Ready. `brain record --from-file PATH` chunks a local file (`ingest.ChunkFile`, deterministic, no network) and records one episode per chunk. |
 | **Web crawl** (`libs/go/ingest`) | ⚠️ Library-only. `Fetch`/`Crawl` are implemented and tested, but not wired into the CLI — reaching the network from `record` needs its own opt-in design (see [`docs/SPEC-record-from-file-v1.md`](docs/SPEC-record-from-file-v1.md)'s non-goals). Call them from Go if you want web ingest today. |
 | **Constraint shield signal provenance (fail-closed)** | ✅ Ready. A hard constraint's cost is never silently treated as 0/safe when its named `signal` is omitted at `check` time — the verdict reports `undetermined:true`/`undetermined_by` and `allowed:false` instead. Configurable per constraint via `constraints.json`'s `when_absent` (`veto`/`abstain`/`assume_safe`). See [`docs/SPEC-shield-signal-provenance-v1.md`](docs/SPEC-shield-signal-provenance-v1.md). |
+| **Polyglot shield ports** (`libs/python`, `libs/js`, `libs/rust`) | ✅ Ready. The constraint shield (fail-closed semantics included) is also ported to Python (`brain_shield`), TypeScript (`@brain/shield` in `libs/js/brain-shield`), and Rust (`brain-shield` crate) — each verified byte-identical against the same [`conformance/cases/shield.json`](conformance/cases/shield.json) golden vectors in CI. Only the shield is ported so far, not the full engine (recall/consolidation/convictions remain Go-only). See [`docs/SPEC-shield-conformance-v1.md`](docs/SPEC-shield-conformance-v1.md). |
 
 ## Install
 
