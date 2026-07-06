@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/muthuishere/brain/libs/go/engine"
+	"github.com/muthuishere/brain/libs/go/ingest"
 )
 
 //go:embed skill/SKILL.md
@@ -89,6 +90,10 @@ commands:
   init                              create the brain folder + starter constraints.json
   objective ["TEXT"]                set the foreground objective (or print it)
   record "TEXT" [--reward R] [--label L] [--dimension D]
+  record --from-file PATH [--max-tokens N] [--overlap N] [--reward R] [--label L] [--dimension D] [--json]
+                                     chunk a local file (ingest.ChunkFile) and record one episode per
+                                     chunk; --max-tokens/--overlap default to 450/60 (chunker defaults);
+                                     TEXT and --from-file are mutually exclusive
   reappraise ID --reward R [--label L] [--note N]
   recall "QUERY" [-k N] [--json]    grounded, cite-or-abstain recall
   learn "TOPIC" [--json]            what validated convictions cover a topic
@@ -225,18 +230,64 @@ func cmdObjective(repo string, args []string) {
 }
 
 func cmdRecord(repo string, args []string) {
-	if len(args) == 0 {
+	text, f := firstArgAndFlags(args)
+	if path, hasFile := f.strs["from-file"]; hasFile {
+		if text != "" {
+			fatal("record: --from-file and a text argument are mutually exclusive")
+		}
+		cmdRecordFromFile(repo, path, f)
+		return
+	}
+	if text == "" {
 		fatal("record needs text")
 	}
-	text := args[0]
-	f := parseFlags(args[1:])
-	var outcome *engine.Outcome
-	if r, ok := f.floats["reward"]; ok {
-		outcome = &engine.Outcome{Reward: r, Label: f.strs["label"], Dimension: f.strs["dimension"]}
+	b := openBrain(repo)
+	ep := b.Record(text, buildOutcome(f))
+	fmt.Printf("recorded %s\n", ep.ID)
+}
+
+// buildOutcome constructs the Outcome for a record from the --reward/--label/
+// --dimension flags, or nil if --reward was not given. Returns a fresh value
+// each call so callers recording multiple episodes (record --from-file) don't
+// share one Outcome pointer across episodes.
+func buildOutcome(f flags) *engine.Outcome {
+	r, ok := f.floats["reward"]
+	if !ok {
+		return nil
+	}
+	return &engine.Outcome{Reward: r, Label: f.strs["label"], Dimension: f.strs["dimension"]}
+}
+
+// cmdRecordFromFile chunks a local file (ingest.ChunkFile) and records each
+// chunk as its own episode, in file order. Deterministic and network-free:
+// chunking is a pure function of the file's bytes.
+func cmdRecordFromFile(repo, path string, f flags) {
+	maxTokens := 450
+	if v, ok := f.floats["max-tokens"]; ok {
+		maxTokens = int(v)
+	}
+	overlap := 60
+	if v, ok := f.floats["overlap"]; ok {
+		overlap = int(v)
+	}
+	chunks, err := ingest.ChunkFile(path, maxTokens, overlap)
+	if err != nil {
+		fatal("record --from-file: %v", err)
 	}
 	b := openBrain(repo)
-	ep := b.Record(text, outcome)
-	fmt.Printf("recorded %s\n", ep.ID)
+	ids := make([]string, 0, len(chunks))
+	for _, c := range chunks {
+		ep := b.Record(c.Text, buildOutcome(f))
+		ids = append(ids, ep.ID)
+		if !f.bools["json"] {
+			fmt.Printf("recorded %s\n", ep.ID)
+		}
+	}
+	if f.bools["json"] {
+		emit(ids)
+		return
+	}
+	fmt.Printf("recorded %d episodes from %s\n", len(ids), path)
 }
 
 func cmdReappraise(repo string, args []string) {

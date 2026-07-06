@@ -21,7 +21,12 @@ the audit trail**.
 - Chunking/tokenizing are delegated to the tested
   [`citenexus/golang`](https://github.com/muthuishere/citenexus) module
   rather than reimplemented.
-- Design + research: [`docs/BRAIN.md`](docs/BRAIN.md).
+- Design + research: [`docs/BRAIN.md`](docs/BRAIN.md). Feature specs land as
+  `docs/SPEC-<slug>-v1.md` — see [`docs/SPEC-record-from-file-v1.md`](docs/SPEC-record-from-file-v1.md).
+- `libs/go/engine` (the shield veto, conviction confidence, consolidation
+  clustering, and recall gating) is covered by tests under
+  `libs/go/engine/*_test.go` — the safety-critical core is proven, not just
+  asserted.
 
 ## Status — what's ready today
 
@@ -32,7 +37,8 @@ the audit trail**.
 | **Offline recall (hash embedding)** | ✅ Ready, zero network by default. |
 | **Optional embedding/reranker/LLM endpoints** | ✅ Ready (`libs/go/modelclients`), opt-in via `endpoints.json`. |
 | **S3 / object storage** (`libs/go/storage`) | ⚠️ Library-only. `S3Backend`/`LocalFsBackend` implement a generic bytes/JSON blob interface and are usable from Go code, but there is **no `engine.Store` implementation on S3 yet** and **no `--store s3` CLI flag** — `brain --repo` always uses the local file store today. |
-| **Web crawl / file chunking** (`libs/go/ingest`) | ⚠️ Library-only. `Fetch`/`Crawl`/`ChunkFile` are implemented and tested, but no CLI command wires them into `record` yet — call them from Go if you want ingest today. |
+| **File ingest** (`libs/go/ingest`) | ✅ Ready. `brain record --from-file PATH` chunks a local file (`ingest.ChunkFile`, deterministic, no network) and records one episode per chunk. |
+| **Web crawl** (`libs/go/ingest`) | ⚠️ Library-only. `Fetch`/`Crawl` are implemented and tested, but not wired into the CLI — reaching the network from `record` needs its own opt-in design (see [`docs/SPEC-record-from-file-v1.md`](docs/SPEC-record-from-file-v1.md)'s non-goals). Call them from Go if you want web ingest today. |
 
 ## Install
 
@@ -66,6 +72,9 @@ brain --repo ./mybrain consolidate          # → distils a validated conviction
 brain --repo ./mybrain recall "overtrading" --json
 brain --repo ./mybrain check "bet the account" --reward 0.95 --signal ruin_risk=1 --json
 #   → allowed:false  alarm:true  vetoed_by:[never-ruin]   ("winning is actually losing")
+
+# bulk-ingest a doc into episodic memory — one episode per chunk, no network:
+brain --repo ./mybrain record --from-file postmortem.md --reward -1 --label "postmortem"
 ```
 
 ## Endpoints (optional — works fully offline without them)
