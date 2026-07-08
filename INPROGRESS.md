@@ -1,5 +1,48 @@
 # brain — in progress
 
+## NOW: self-evolving brain (2026-07-08) — owner working directly here
+
+Full spec: **`docs/SPEC-self-evolving-v1.md`** · research digest:
+`toolnexus/docs/references/self-evolving-agents-2026-07-08.md` · OS doctrine:
+`deemwar-one-os/doctrine/self-improving-harness.md`.
+Principle: **build on top of the existing core** (engine + CLI + skill) — extend, never rebuild.
+Division: **brain learns, toolnexus acts** (agents load playbook/skills at runtime).
+
+### Phase A — self-improving harness (experiences → evolving playbook) — DONE 2026-07-08
+- [x] engine: `libs/go/engine/playbook.go` (Delta/PlaybookEntry/EvolvePolicy; Reflect/Regress/
+      Curate pure funcs; content-dedup, supersession, genealogy; tests in playbook_test.go)
+- [x] `brain reflect [--since TS]` — queues fresh deltas to `pending-deltas.ndjson`; idempotent
+      (skips deltas already pending/rejected/in playbook SourceDeltas)
+- [x] `brain curate [--apply]` — regress-gates each pending delta against validated convictions,
+      merges survivors into `playbook.json`; rejections → `rejected-candidates.ndjson`
+- [x] `brain playbook [--topic T] [--json]`
+- [x] `brain regress <delta-id>` — standalone gate inspection
+- [x] `consolidate --evolve` = consolidate→reflect→gate→curate --apply in one pass
+- [x] thresholds in `evolve-policy.json` (owner-owned, defaults in DefaultEvolvePolicy)
+- CLI wiring in `clis/go/brain/evolve.go`; smoke-tested end-to-end; all tests green.
+
+### Phase B — self-evolving skills (SkillOpt, arXiv 2605.23904)
+- [ ] skill library layout `skills-lib/{primitives,composites,archived}/` + `metadata.json`
+      (versions, lineage, metrics: success_rate, invocation_count, cost)
+- [ ] `brain skill register --from <trace|file>` — failure-driven synthesis of skill versions
+- [ ] `brain skill validate <id> --test-data DIR` — held-out gate, accept only ≥ +5% vs prior
+- [ ] `brain skill log <id> --task T --outcome ok|fail [--cost C]` — per-use feedback
+- [ ] `brain skill search / metrics / deprecate` — index, health, retirement (rollback kept)
+
+### Phase C — everyone uses it
+- [x] `skills/brain/SKILL.md`: reflect/curate/playbook how-to added (2026-07-08);
+      skill-lifecycle section still pending Phase B
+- [x] both skills updated (skills/brain + embedded copy synced; `install-skills` ships it)
+- [ ] toolnexus consumption: agents load `brain playbook` + `brain skill search` at spawn
+
+### Guardrails (non-negotiable)
+Evaluator outside the loop (thresholds are config the producer can't edit in-run) · rejected
+candidates logged, never silently applied · negative results first-class · deterministic core /
+agent-reasoning split preserved (no model endpoint in engine) · anti-collapse: probe
+poor-looking paths on PAPER before promoting.
+
+---
+
 Standalone CLI for the **CiteNexus Brain**: an evidence-first, git-repo-backed
 memory an agent records experiences into and recalls grounded, cite-or-abstain
 answers from, with a deterministic constraint shield that vetoes "profitable but

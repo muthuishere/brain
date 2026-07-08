@@ -65,6 +65,14 @@ func main() {
 		cmdCheck(repo, args)
 	case "consolidate":
 		cmdConsolidate(repo, args)
+	case "reflect":
+		cmdReflect(repo, args)
+	case "curate":
+		cmdCurate(repo, args)
+	case "playbook":
+		cmdPlaybook(repo, args)
+	case "regress":
+		cmdRegress(repo, args)
 	case "convictions":
 		cmdConvictions(repo, args)
 	case "status":
@@ -93,7 +101,11 @@ commands:
   recall "QUERY" [-k N] [--json]    grounded, cite-or-abstain recall
   learn "TOPIC" [--json]            what validated convictions cover a topic
   check "DECISION" --reward R [--signal name=val ...] [--fallback F] [--json]
-  consolidate [--min-support N] [--min-consistency C] [--forget] [--json]
+  consolidate [--min-support N] [--min-consistency C] [--forget] [--evolve] [--json]
+  reflect [--since TS] [--json]    distill recent episodes into candidate playbook deltas
+  curate [--apply] [--json]        regress-gate pending deltas, merge survivors into the playbook
+  playbook [--topic T] [--json]    print the itemized playbook agents load before acting
+  regress DELTA-ID [--json]        run the regression gate on one pending delta
   convictions [--json]             the brain's current point of view
   status                           objective + counts
   install-skills                   install the agent skill + seed ~/.config/brain/config.json
@@ -340,12 +352,17 @@ func cmdConsolidate(repo string, args []string) {
 		minConsistency = v
 	}
 	rep := openBrain(repo).Consolidate(minSupport, minConsistency, 1, f.bools["forget"], 8760)
-	if f.bools["json"] {
+	if !f.bools["json"] {
+		fmt.Printf("convictions formed: %d  conflicts: %d  decayed: %d  total: %d\n",
+			rep.ConvictionsFormed, rep.ConflictsSurfaced, rep.EpisodesDecayed, rep.TotalConvictions)
+	} else if !f.bools["evolve"] {
 		emit(rep)
-		return
 	}
-	fmt.Printf("convictions formed: %d  conflicts: %d  decayed: %d  total: %d\n",
-		rep.ConvictionsFormed, rep.ConflictsSurfaced, rep.EpisodesDecayed, rep.TotalConvictions)
+	if f.bools["evolve"] {
+		// The scheduled curator pass: reflect → regress-gate → curate --apply.
+		cmdReflect(repo, args)
+		runCurate(repo, true, f.bools["json"])
+	}
 }
 
 func cmdConvictions(repo string, args []string) {
@@ -429,7 +446,7 @@ func parseFlags(args []string) flags {
 			continue
 		}
 		name := strings.TrimLeft(a, "-")
-		if name == "json" || name == "forget" {
+		if name == "json" || name == "forget" || name == "apply" || name == "evolve" {
 			f.bools[name] = true
 			continue
 		}

@@ -54,6 +54,11 @@ If a brain folder isn't a git repo yet: `git -C "$REPO" init` then `brain --repo
 | **Check a decision (the shield)** | `brain --repo "$REPO" check "DECISION" --reward 0.9 --signal ruin_risk=1 --json` |
 | The "sleep" pass (distil beliefs) | `brain --repo "$REPO" consolidate --json` |
 | Current beliefs | `brain --repo "$REPO" convictions --json` |
+| Propose playbook deltas from recent episodes | `brain --repo "$REPO" reflect --json` |
+| Gate + merge deltas into the playbook | `brain --repo "$REPO" curate --apply --json` |
+| Load the playbook before acting | `brain --repo "$REPO" playbook [--topic T] --json` |
+| Inspect one delta against the gate | `brain --repo "$REPO" regress DELTA_ID --json` |
+| Full scheduled learning pass | `brain --repo "$REPO" consolidate --evolve --json` |
 
 `reward` is signed feedback along any axis (money is one — `--dimension correctness`
 etc. work too). Losses teach more than equal wins; a single unrepeated result never
@@ -61,7 +66,8 @@ becomes a belief.
 
 ## Commit after every mutation — git history IS the audit trail
 
-After any command that writes (`objective`, `record`, `reappraise`, `consolidate`),
+After any command that writes (`objective`, `record`, `reappraise`, `consolidate`,
+`reflect`, `curate --apply`),
 commit so the change is auditable and shareable:
 
 ```sh
@@ -116,6 +122,25 @@ CLI reads the key from it at run time and never stores or prints it. Env
 overrides also work: `BRAIN_EMBED_URL` / `BRAIN_EMBED_MODEL` / `BRAIN_EMBED_KEY_ENV`
 (and `BRAIN_RERANK_*`, `BRAIN_LLM_*`). Commit `endpoints.json` only if it holds no
 secrets (it shouldn't — keys live in env).
+
+## The self-improving loop (playbook)
+
+The brain turns experience into an **itemized playbook** agents load before acting.
+The core is deterministic; you supply the prose when recording.
+
+- **Before acting**: `brain --repo "$REPO" playbook --topic "the task" --json` and
+  honor the `AVOID:` / `DO:` rules (each carries evidence episode ids and reward).
+- **At work-done / session-end**: record outcomes (successes AND failures,
+  honestly), then `reflect` (proposes deltas — read-only) and `curate --apply`
+  (regress-gates each delta against validated convictions, merges survivors,
+  dedups by content, supersedes stale rules with lineage). Commit after.
+- **At retro / on a schedule**: `consolidate --evolve` runs the whole pass
+  (consolidate → reflect → gate → curate --apply) in one go.
+- Rejections land in `rejected-candidates.ndjson` — logged, never silently
+  applied; read them at retro, they are first-class negative results.
+- Thresholds live in `"$REPO"/evolve-policy.json` (min_consistency,
+  contradiction_overlap…). They are the OWNER'S dial — never edit them in the
+  same run that produces deltas.
 
 ## Reading raw memory
 
