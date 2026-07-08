@@ -142,6 +142,35 @@ The core is deterministic; you supply the prose when recording.
   contradiction_overlap…). They are the OWNER'S dial — never edit them in the
   same run that produces deltas.
 
+## Self-evolving skills (the skill library)
+
+`"$REPO"/skills-lib/` is a versioned library of executable procedure specs. The
+CLI is only the bookkeeping and the promotion gate — **you** synthesize the
+content, run the held-out cases, and write the rationales. The lifecycle:
+
+- **Register from failure**: when `reflect` keeps surfacing the same failure
+  pattern, write a skill spec (a markdown procedure: preconditions, steps,
+  success criteria) to a temp file and
+  `brain --repo "$REPO" skill register --id ID --from FILE --domain D --rationale "why"`.
+  A first version becomes current; later versions are CANDIDATES until validated.
+  Use `--parent OTHER_ID` when deriving from an existing skill, `--kind composite`
+  when chaining primitives.
+- **Validate before promoting**: run the SAME held-out cases against the prior
+  and candidate versions yourself, write the counts to `DIR/prior.json` and
+  `DIR/candidate.json` (`{"passed":N,"failed":M}`), then
+  `brain --repo "$REPO" skill validate ID --test-data DIR`. The gate promotes only
+  on ≥ +5% improvement (`min_improvement` in evolve-policy.json — the owner's
+  dial); rejected versions are archived with their verdict, never silently current.
+- **Log every use**: after each invocation,
+  `brain --repo "$REPO" skill log ID --task "..." --outcome ok|fail [--cost C]` —
+  this feeds the metrics everything else reads.
+- **Search before acting**: `brain --repo "$REPO" skill search --domain D
+  [--min-success 0.7] --json`, then read the current spec file it points at.
+- **At retro**: check `skill metrics ID`; `skill deprecate ID` what degraded
+  (lineage kept), `skill rollback ID --to N` when a promotion regressed in the wild.
+
+Commit after register / validate / log / deprecate / rollback, same as any mutation.
+
 ## Reading raw memory
 
 The repo is plain files — inspect or grep directly:

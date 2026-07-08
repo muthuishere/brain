@@ -73,6 +73,8 @@ func main() {
 		cmdPlaybook(repo, args)
 	case "regress":
 		cmdRegress(repo, args)
+	case "skill":
+		cmdSkill(repo, args)
 	case "convictions":
 		cmdConvictions(repo, args)
 	case "status":
@@ -106,6 +108,11 @@ commands:
   curate [--apply] [--json]        regress-gate pending deltas, merge survivors into the playbook
   playbook [--topic T] [--json]    print the itemized playbook agents load before acting
   regress DELTA-ID [--json]        run the regression gate on one pending delta
+  skill register --id ID --from FILE --rationale "why" [--kind primitive|composite] [--domain D] [--parent P]
+  skill validate ID --test-data DIR    promotion gate (DIR: prior.json + candidate.json)
+  skill log ID --outcome ok|fail [--task T] [--cost C]
+  skill search [--domain D] [--min-success R] · skill metrics ID [--since TS]
+  skill deprecate ID · skill rollback ID --to N
   convictions [--json]             the brain's current point of view
   status                           objective + counts
   install-skills                   install the agent skill + seed ~/.config/brain/config.json

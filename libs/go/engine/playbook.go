@@ -65,11 +65,12 @@ type EvolvePolicy struct {
 	MinSharedTokens      int     `json:"min_shared_tokens"`     // clustering width for reflect
 	ContradictionOverlap int     `json:"contradiction_overlap"` // shared tokens for a conviction to count as on-topic
 	SupersessionOverlap  int     `json:"supersession_overlap"`  // shared tokens for a delta to supersede an entry
+	MinImprovement       float64 `json:"min_improvement"`       // held-out gain a skill version needs to be promoted
 }
 
 // DefaultEvolvePolicy returns the standing defaults used when no policy file exists.
 func DefaultEvolvePolicy() EvolvePolicy {
-	return EvolvePolicy{MinConsistency: 0.6, MinSharedTokens: 2, ContradictionOverlap: 2, SupersessionOverlap: 2}
+	return EvolvePolicy{MinConsistency: 0.6, MinSharedTokens: 2, ContradictionOverlap: 2, SupersessionOverlap: 2, MinImprovement: 0.05}
 }
 
 func contentKey(rule string) string {

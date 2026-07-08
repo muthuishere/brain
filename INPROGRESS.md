@@ -21,19 +21,24 @@ Division: **brain learns, toolnexus acts** (agents load playbook/skills at runti
 - [x] thresholds in `evolve-policy.json` (owner-owned, defaults in DefaultEvolvePolicy)
 - CLI wiring in `clis/go/brain/evolve.go`; smoke-tested end-to-end; all tests green.
 
-### Phase B — self-evolving skills (SkillOpt, arXiv 2605.23904)
-- [ ] skill library layout `skills-lib/{primitives,composites,archived}/` + `metadata.json`
-      (versions, lineage, metrics: success_rate, invocation_count, cost)
-- [ ] `brain skill register --from <trace|file>` — failure-driven synthesis of skill versions
-- [ ] `brain skill validate <id> --test-data DIR` — held-out gate, accept only ≥ +5% vs prior
-- [ ] `brain skill log <id> --task T --outcome ok|fail [--cost C]` — per-use feedback
-- [ ] `brain skill search / metrics / deprecate` — index, health, retirement (rollback kept)
+### Phase B — self-evolving skills (SkillOpt, arXiv 2605.23904) — DONE 2026-07-08
+- [x] engine: `libs/go/engine/skilllib.go` (SkillLib over `skills-lib/{primitives,composites,
+      archived}/` + `metadata.json` + `usage.ndjson`; versions, lineage, rationale mandatory,
+      metrics recomputed from the usage log; tests in skilllib_test.go)
+- [x] `brain skill register --id ID --from FILE --rationale "why"` — v1 becomes current; later
+      versions are CANDIDATES until validated (agent synthesizes content; CLI is bookkeeping only)
+- [x] `brain skill validate ID --test-data DIR` — arithmetic gate, promote only ≥ min_improvement
+      (default +5%, `min_improvement` in evolve-policy.json); rejected → archived with verdict
+- [x] `brain skill log ID --outcome ok|fail [--task T] [--cost C]` — per-use feedback
+- [x] `brain skill search / metrics / deprecate / rollback` — active-only search, windowed
+      metrics, retirement with lineage kept, rollback refuses gate-rejected versions
+- CLI wiring in `clis/go/brain/skill_cmds.go`; smoke-tested full lifecycle; all tests green.
 
 ### Phase C — everyone uses it
-- [x] `skills/brain/SKILL.md`: reflect/curate/playbook how-to added (2026-07-08);
-      skill-lifecycle section still pending Phase B
+- [x] `skills/brain/SKILL.md`: reflect/curate/playbook + skill-lifecycle how-to (2026-07-08)
 - [x] both skills updated (skills/brain + embedded copy synced; `install-skills` ships it)
 - [ ] toolnexus consumption: agents load `brain playbook` + `brain skill search` at spawn
+      — PENDING, lives in the toolnexus repo, not here
 
 ### Guardrails (non-negotiable)
 Evaluator outside the loop (thresholds are config the producer can't edit in-run) · rejected
