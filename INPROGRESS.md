@@ -100,11 +100,10 @@ The reference brain also exists in Python (`rag-cite-nexus/python`), TypeScript
    `muthuishere/brain`, and the `go install` path to
    `github.com/muthuishere/brain/cmd/brain@latest`. (install.sh / install.cmd /
    release.yml are already updated to brain + `./cmd/brain`.)
-2. **Push + tag**: push to `muthuishere/brain`, then `git tag v0.1.0 && git
-   push --tags` to trigger `release.yml` → publishes cross-compiled binaries that
-   `install.sh` / `install.cmd` download.
-3. **Verify CI**: confirm the Actions run green on GitHub (runners must have Go 1.26,
-   as the rag-cite-nexus workflows already assume).
+2. **Push + tag**: DONE — v0.3.0 released 2026-07-08 (self-evolving Phase A+B, shield
+   fail-closed, ingest); binaries for darwin/linux/windows × amd64/arm64 + checksums
+   published, install.sh verified end-to-end (new `skill`/`playbook` verbs present).
+3. **Verify CI**: DONE — ci and release workflows green on GitHub (2026-07-08).
 4. **Seed constraints**: replace the placeholder `never-ruin` / `never-n1` in
    `constraints.json` with the real inviolables for the brains you'll run.
 5. (Optional) **Parity**: backport the reranker seam (added here in `engine`) to
