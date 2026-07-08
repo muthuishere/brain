@@ -82,15 +82,42 @@ Recall / learn / check / convictions are read-only — no commit.
 
 - `"allowed": false` → do **not** take the decision. Offer `"fallback"` instead.
 - `"alarm": true` → "profitable but ruinous": it scores well on the objective but
-  violates a standing constraint. This is the loudest signal — surface it to the
-  human, don't quietly proceed.
-- `"guaranteed": true` → every constraint self-evaluated in code. If false, a cost
-  came from outside and the verdict is advisory.
+  violates a standing constraint (or a required constraint was undetermined —
+  see below). This is the loudest signal — surface it to the human, don't
+  quietly proceed.
+- `"guaranteed": true` → every constraint self-evaluated in code from a real,
+  supplied input. If false, either a cost came from outside the code (advisory)
+  or a required signal was missing (see `undetermined` next) — either way, don't
+  read the verdict as a proof.
+- `"undetermined": true` → **treat exactly like `allowed:false`: do not take the
+  decision, use the fallback.** It means something distinct from a measured
+  violation, though: at least one **hard** constraint named a signal (via
+  `"signal"` in `constraints.json`) that you never passed with `--signal`, so
+  the shield could not tell whether it was safe — it is not claiming the
+  decision *is* unsafe, only that it **could not check**. `"undetermined_by"`
+  lists the constraint names that were unresolved. This is fail-closed by
+  design (see `docs/SPEC-shield-signal-provenance-v1.md`): an omitted signal on
+  a hard constraint is never silently treated as "cost 0, safe." If you see
+  `undetermined:true`, the fix is almost always to re-run `check` with the
+  missing `--signal name=value` supplied, not to proceed anyway.
 
 The constraints live in `"$REPO"/constraints.json` (declarative: `name`, `text`,
-`kind` hard|soft, `signal`, `threshold`, `weight`). To evaluate them, pass the
-decision's measured signals: `--signal ruin_risk=0.9 --signal unrepeated=1`. You
-supply those numbers from the situation; the CLI does the veto.
+`kind` hard|soft, `signal`, `threshold`, `weight`, `when_absent`). To evaluate
+them, pass the decision's measured signals: `--signal ruin_risk=0.9 --signal
+unrepeated=1`. You supply those numbers from the situation; the CLI does the veto.
+
+`when_absent` governs what it means when a named `signal` is missing from
+`--signal` at check time:
+
+| `when_absent` | Effect when the signal is omitted |
+|---|---|
+| `veto` (default for **hard**) | fail closed: `undetermined:true`, `allowed:false` |
+| `abstain` | `undetermined:true`, `allowed:false`, but distinct from a fired veto (nothing was measured to violate) |
+| `assume_safe` (default for **soft**; opt-in for hard) | treated as cost 0 (not violated), but `guaranteed:false` — an explicit, auditable escape hatch you set in `constraints.json`, in git |
+
+Leave `when_absent` unset for any hard safety constraint you actually want to
+gate on — that is the safe default. Only set `assume_safe` for a constraint
+that is genuinely optional to evaluate.
 
 ## Multiple brains
 
