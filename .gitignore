@@ -21,3 +21,4 @@ Cargo.lock
 # Node/TypeScript
 node_modules/
 libs/js/*/dist/
+.DS_Store
