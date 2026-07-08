@@ -32,12 +32,11 @@ the improvement") points at this gap specifically. Going with ingest-wiring.
 
 ## Non-goals (v1)
 
-- **No `record --from-url`.** Wiring `ingest.Fetch`/`Crawl` into the CLI
-  means the CLI would reach the network by default the moment a user tries
-  ingest — that's a bigger default-posture change than "wire an existing
-  library call," and the endpoints precedent (`endpoints.json`, explicit
-  opt-in file) suggests any network-reaching CLI surface needs its own
-  opt-in design. Deferred; flag for a follow-up SPEC if wanted.
+- ~~**No `record --from-url`.**~~ **Superseded** — landed in
+  [`docs/SPEC-record-from-url-v1.md`](docs/SPEC-record-from-url-v1.md):
+  single-URL fetch is opt-in (only when `--from-url` is passed), exactly the
+  same posture as `endpoints.json`. Multi-page `Crawl` remains out of scope,
+  per that SPEC's own non-goals.
 - **No dedup/upsert-by-content.** Re-ingesting the same file (or overlapping
   chunk windows) creates additional episodes; `Store` has no content-addressed
   upsert. This matches the existing append-only, supersede-don't-delete

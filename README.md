@@ -43,7 +43,8 @@ the audit trail**.
 | **Optional embedding/reranker/LLM endpoints** | ✅ Ready (`libs/go/modelclients`), opt-in via `endpoints.json`. |
 | **S3 / object storage** (`libs/go/storage`) | ⚠️ Library-only. `S3Backend`/`LocalFsBackend` implement a generic bytes/JSON blob interface and are usable from Go code, but there is **no `engine.Store` implementation on S3 yet** and **no `--store s3` CLI flag** — `brain --repo` always uses the local file store today. |
 | **File ingest** (`libs/go/ingest`) | ✅ Ready. `brain record --from-file PATH` chunks a local file (`ingest.ChunkFile`, deterministic, no network) and records one episode per chunk. |
-| **Web crawl** (`libs/go/ingest`) | ⚠️ Library-only. `Fetch`/`Crawl` are implemented and tested, but not wired into the CLI — reaching the network from `record` needs its own opt-in design (see [`docs/SPEC-record-from-file-v1.md`](docs/SPEC-record-from-file-v1.md)'s non-goals). Call them from Go if you want web ingest today. |
+| **Single-URL ingest** (`brain record --from-url`) | ✅ Ready. Fetches one URL — the CLI's only network call, and only when this flag is passed — strips HTML markup if the response is HTML, and chunks it exactly like `record --from-file`. See [`docs/SPEC-record-from-url-v1.md`](docs/SPEC-record-from-url-v1.md). |
+| **Multi-page crawl** (`libs/go/ingest.Crawl`) | ⚠️ Library-only. `Crawl` (same-host BFS, depth/page-capped) is implemented and tested, but not wired into the CLI — a crawl's much larger network footprint (many pages, unbounded by default) is a bigger opt-in-policy decision than a single fetch and is deliberately deferred. Call it from Go if you want multi-page ingest today. |
 | **Constraint shield signal provenance (fail-closed)** | ✅ Ready. A hard constraint's cost is never silently treated as 0/safe when its named `signal` is omitted at `check` time — the verdict reports `undetermined:true`/`undetermined_by` and `allowed:false` instead. Configurable per constraint via `constraints.json`'s `when_absent` (`veto`/`abstain`/`assume_safe`). See [`docs/SPEC-shield-signal-provenance-v1.md`](docs/SPEC-shield-signal-provenance-v1.md). |
 | **Polyglot shield ports** (`libs/python`, `libs/js`, `libs/rust`) | ✅ Ready. The constraint shield (fail-closed semantics included) is also ported to Python (`brain_shield`), TypeScript (`@brain/shield` in `libs/js/brain-shield`), and Rust (`brain-shield` crate) — each verified byte-identical against the same [`conformance/cases/shield.json`](conformance/cases/shield.json) golden vectors in CI. Only the shield is ported so far, not the full engine (recall/consolidation/convictions remain Go-only). See [`docs/SPEC-shield-conformance-v1.md`](docs/SPEC-shield-conformance-v1.md). |
 
@@ -82,6 +83,9 @@ brain --repo ./mybrain check "bet the account" --reward 0.95 --signal ruin_risk=
 
 # bulk-ingest a doc into episodic memory — one episode per chunk, no network:
 brain --repo ./mybrain record --from-file postmortem.md --reward -1 --label "postmortem"
+
+# same, but fetch a single URL instead (the CLI's only network call, opt-in):
+brain --repo ./mybrain record --from-url https://example.com/postmortem --reward -1 --label "postmortem"
 ```
 
 `check` requires *every* hard constraint's named `signal` to be supplied above

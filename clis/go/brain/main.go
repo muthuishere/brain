@@ -97,6 +97,11 @@ commands:
                                      chunk a local file (ingest.ChunkFile) and record one episode per
                                      chunk; --max-tokens/--overlap default to 450/60 (chunker defaults);
                                      TEXT and --from-file are mutually exclusive
+  record --from-url URL [--max-tokens N] [--overlap N] [--reward R] [--label L] [--dimension D] [--json]
+                                     fetch ONE url (network, opt-in), strip HTML if the response is
+                                     HTML, chunk it the same way as --from-file, record one episode
+                                     per chunk; TEXT/--from-file/--from-url are mutually exclusive
+                                     (no crawl — see ingest.Crawl for multi-page, library-only today)
   reappraise ID --reward R [--label L] [--note N]
   recall "QUERY" [-k N] [--json]    grounded, cite-or-abstain recall
   learn "TOPIC" [--json]            what validated convictions cover a topic
@@ -244,11 +249,23 @@ func cmdObjective(repo string, args []string) {
 
 func cmdRecord(repo string, args []string) {
 	text, f := firstArgAndFlags(args)
-	if path, hasFile := f.strs["from-file"]; hasFile {
+	_, hasFile := f.strs["from-file"]
+	_, hasURL := f.strs["from-url"]
+	if hasFile && hasURL {
+		fatal("record: --from-file and --from-url are mutually exclusive")
+	}
+	if hasFile {
 		if text != "" {
 			fatal("record: --from-file and a text argument are mutually exclusive")
 		}
-		cmdRecordFromFile(repo, path, f)
+		cmdRecordFromFile(repo, f.strs["from-file"], f)
+		return
+	}
+	if hasURL {
+		if text != "" {
+			fatal("record: --from-url and a text argument are mutually exclusive")
+		}
+		cmdRecordFromURL(repo, f.strs["from-url"], f)
 		return
 	}
 	if text == "" {
@@ -301,6 +318,39 @@ func cmdRecordFromFile(repo, path string, f flags) {
 		return
 	}
 	fmt.Printf("recorded %d episodes from %s\n", len(ids), path)
+}
+
+// cmdRecordFromURL fetches one URL (the only network call this repo's CLI
+// makes, and only when --from-url is explicitly passed), chunks its body the
+// same way cmdRecordFromFile does, and records each chunk as its own
+// episode. Not a crawl: exactly one page, no link-following.
+func cmdRecordFromURL(repo, rawURL string, f flags) {
+	maxTokens := 450
+	if v, ok := f.floats["max-tokens"]; ok {
+		maxTokens = int(v)
+	}
+	overlap := 60
+	if v, ok := f.floats["overlap"]; ok {
+		overlap = int(v)
+	}
+	chunks, err := ingest.FetchAndChunk(rawURL, maxTokens, overlap)
+	if err != nil {
+		fatal("record --from-url: %v", err)
+	}
+	b := openBrain(repo)
+	ids := make([]string, 0, len(chunks))
+	for _, c := range chunks {
+		ep := b.Record(c.Text, buildOutcome(f))
+		ids = append(ids, ep.ID)
+		if !f.bools["json"] {
+			fmt.Printf("recorded %s\n", ep.ID)
+		}
+	}
+	if f.bools["json"] {
+		emit(ids)
+		return
+	}
+	fmt.Printf("recorded %d episodes from %s\n", len(ids), rawURL)
 }
 
 func cmdReappraise(repo string, args []string) {
