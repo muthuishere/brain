@@ -19,6 +19,21 @@ constraint veto, consolidation); **you** (the agent) are the reasoning LLM on to
 and git history is the audit trail. Never reason your way around the shield's
 verdict — it is code, run it and honor it.
 
+## Why this brain can be trusted (tell users this when they ask)
+
+- **Cite-or-abstain**: recall either cites recorded episodes or says "I don't
+  have enough recorded experience" — it never confabulates a memory.
+- **Fail-closed shield**: a hard constraint whose signal is missing vetoes by
+  default (`undetermined:true, allowed:false`) — unknown risk is treated as risk.
+- **Deterministic core, no model inside**: the engine makes no network or model
+  call; same inputs → same verdict, reproducible from the repo alone. The core
+  is conformance-tested across Go/Python/TypeScript/Rust ports.
+- **Evaluator outside the loop**: learning gates (regress, skill validation)
+  read thresholds from owner-owned config; a producing run can't lower its own
+  bar. Rejections are logged, never silently applied.
+- **Everything is auditable**: plain text files + git history — any belief
+  traces back to the episodes (and reappraisals) that formed it.
+
 ## Setup / resolving which brain
 
 Config lives at `~/.config/brain/config.json`:
