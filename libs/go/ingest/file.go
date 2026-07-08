@@ -31,7 +31,14 @@ func ChunkFile(path string, maxTokens, overlap int) ([]Chunk, error) {
 	if err != nil {
 		return nil, err
 	}
-	docID := path
+	return ChunkBytes(path, data, maxTokens, overlap), nil
+}
+
+// ChunkBytes splits data into blocks on blank lines and chunks each block via
+// chunker.ChunkText(maxTokens, overlap), addressing chunks under docID —
+// the same block/chunk splitting ChunkFile uses, but for content that didn't
+// come from a local path (e.g. a fetched URL's body).
+func ChunkBytes(docID string, data []byte, maxTokens, overlap int) []Chunk {
 	blocks := blankLineRe.Split(string(data), -1)
 
 	var chunks []Chunk
@@ -49,5 +56,5 @@ func ChunkFile(path string, maxTokens, overlap int) ([]Chunk, error) {
 			})
 		}
 	}
-	return chunks, nil
+	return chunks
 }

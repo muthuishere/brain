@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -31,6 +32,45 @@ func Fetch(rawURL string) (body []byte, contentType string, err error) {
 		return nil, "", err
 	}
 	return body, resp.Header.Get("Content-Type"), nil
+}
+
+var (
+	scriptStyleRe = regexp.MustCompile(`(?is)<(script|style)[^>]*>.*?</(script|style)>`)
+	tagRe         = regexp.MustCompile(`(?s)<[^>]+>`)
+	blankLinesRe  = regexp.MustCompile(`\n{3,}`)
+)
+
+// StripHTML reduces an HTML document to its visible text: script/style
+// blocks are dropped whole, remaining tags are removed, and runs of blank
+// lines are collapsed. It is a deterministic, dependency-free approximation
+// (not a full HTML parser) — good enough to chunk a fetched page's content
+// without markup noise.
+func StripHTML(html []byte) []byte {
+	s := scriptStyleRe.ReplaceAll(html, nil)
+	s = tagRe.ReplaceAll(s, []byte("\n"))
+	text := strings.ReplaceAll(string(s), "&nbsp;", " ")
+	text = strings.ReplaceAll(text, "&amp;", "&")
+	text = strings.ReplaceAll(text, "&lt;", "<")
+	text = strings.ReplaceAll(text, "&gt;", ">")
+	text = blankLinesRe.ReplaceAllString(text, "\n\n")
+	return []byte(text)
+}
+
+// FetchAndChunk fetches a single URL and chunks its body the same way
+// ChunkFile chunks a local file (block split on blank lines, then
+// chunker.ChunkText), addressing chunks under the URL itself. HTML responses
+// have markup stripped via StripHTML first; other content types are chunked
+// as-is. This wires the network-opt-in half of record --from-url — it does
+// not crawl (see Crawl for the same, BFS, multi-page).
+func FetchAndChunk(rawURL string, maxTokens, overlap int) ([]Chunk, error) {
+	body, contentType, err := Fetch(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	if strings.Contains(strings.ToLower(contentType), "html") {
+		body = StripHTML(body)
+	}
+	return ChunkBytes(rawURL, body, maxTokens, overlap), nil
 }
 
 // CrawlResult is one fetched page during a Crawl.

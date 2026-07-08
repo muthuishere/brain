@@ -1,0 +1,28 @@
+{
+  "name": "brain-shield",
+  "version": "0.1.0",
+  "description": "Deterministic constraint shield for brain — a fail-closed veto over decisions, ported from libs/go/engine/shield.go.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/shield.js",
+  "types": "./dist/shield.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/shield.d.ts",
+      "default": "./dist/shield.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.10"
+  }
+}

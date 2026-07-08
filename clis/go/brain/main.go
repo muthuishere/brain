@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/muthuishere/brain/libs/go/engine"
+	"github.com/muthuishere/brain/libs/go/ingest"
 )
 
 //go:embed skill/SKILL.md
@@ -87,12 +88,27 @@ usage: brain [--repo DIR] <command> [args]
 
 commands:
   init                              create the brain folder + starter constraints.json
+                                     (constraints.json fields: name, text, kind, signal,
+                                     threshold, weight, when_absent — "veto"|"abstain"|
+                                     "assume_safe", default "veto" for hard/"assume_safe" for soft)
   objective ["TEXT"]                set the foreground objective (or print it)
   record "TEXT" [--reward R] [--label L] [--dimension D]
+  record --from-file PATH [--max-tokens N] [--overlap N] [--reward R] [--label L] [--dimension D] [--json]
+                                     chunk a local file (ingest.ChunkFile) and record one episode per
+                                     chunk; --max-tokens/--overlap default to 450/60 (chunker defaults);
+                                     TEXT and --from-file are mutually exclusive
+  record --from-url URL [--max-tokens N] [--overlap N] [--reward R] [--label L] [--dimension D] [--json]
+                                     fetch ONE url (network, opt-in), strip HTML if the response is
+                                     HTML, chunk it the same way as --from-file, record one episode
+                                     per chunk; TEXT/--from-file/--from-url are mutually exclusive
+                                     (no crawl — see ingest.Crawl for multi-page, library-only today)
   reappraise ID --reward R [--label L] [--note N]
   recall "QUERY" [-k N] [--json]    grounded, cite-or-abstain recall
   learn "TOPIC" [--json]            what validated convictions cover a topic
   check "DECISION" --reward R [--signal name=val ...] [--fallback F] [--json]
+                                     a hard constraint whose signal is omitted fails
+                                     closed: undetermined:true, allowed:false (see
+                                     constraints.json's when_absent field above)
   consolidate [--min-support N] [--min-consistency C] [--forget] [--json]
   convictions [--json]             the brain's current point of view
   status                           objective + counts
@@ -149,12 +165,13 @@ func openBrain(repo string) *engine.Brain {
 // --- constraints (declarative, serializable) --------------------------------
 
 type constraintFile struct {
-	Name      string  `json:"name"`
-	Text      string  `json:"text"`
-	Kind      string  `json:"kind"`
-	Signal    string  `json:"signal"`
-	Threshold float64 `json:"threshold"`
-	Weight    float64 `json:"weight"`
+	Name       string  `json:"name"`
+	Text       string  `json:"text"`
+	Kind       string  `json:"kind"`
+	Signal     string  `json:"signal"`
+	Threshold  float64 `json:"threshold"`
+	Weight     float64 `json:"weight"`
+	WhenAbsent string  `json:"when_absent"`
 }
 
 func loadConstraints(repo string) []engine.Constraint {
@@ -179,6 +196,7 @@ func loadConstraints(repo string) []engine.Constraint {
 		out = append(out, engine.Constraint{
 			Name: c.Name, Text: c.Text, Kind: kind,
 			Threshold: c.Threshold, Weight: w, Signal: c.Signal,
+			WhenAbsent: c.WhenAbsent,
 		})
 	}
 	return out
@@ -192,6 +210,11 @@ func cmdInit(repo string) {
 	}
 	path := filepath.Join(repo, "constraints.json")
 	if _, err := os.Stat(path); os.IsNotExist(err) {
+		// Both starters are Hard with no explicit when_absent: they rely on the
+		// default fail-closed policy ("veto") — if the caller omits the named
+		// signal at check time, the constraint is Undetermined and the decision
+		// is not allowed, rather than silently passing. See
+		// docs/SPEC-shield-signal-provenance-v1.md.
 		starter := []constraintFile{
 			{Name: "never-ruin", Text: "never risk ruin / irrecoverable loss", Kind: "hard", Signal: "ruin_risk"},
 			{Name: "never-n1", Text: "never act on a single unrepeated result", Kind: "hard", Signal: "unrepeated"},
@@ -225,18 +248,109 @@ func cmdObjective(repo string, args []string) {
 }
 
 func cmdRecord(repo string, args []string) {
-	if len(args) == 0 {
+	text, f := firstArgAndFlags(args)
+	_, hasFile := f.strs["from-file"]
+	_, hasURL := f.strs["from-url"]
+	if hasFile && hasURL {
+		fatal("record: --from-file and --from-url are mutually exclusive")
+	}
+	if hasFile {
+		if text != "" {
+			fatal("record: --from-file and a text argument are mutually exclusive")
+		}
+		cmdRecordFromFile(repo, f.strs["from-file"], f)
+		return
+	}
+	if hasURL {
+		if text != "" {
+			fatal("record: --from-url and a text argument are mutually exclusive")
+		}
+		cmdRecordFromURL(repo, f.strs["from-url"], f)
+		return
+	}
+	if text == "" {
 		fatal("record needs text")
 	}
-	text := args[0]
-	f := parseFlags(args[1:])
-	var outcome *engine.Outcome
-	if r, ok := f.floats["reward"]; ok {
-		outcome = &engine.Outcome{Reward: r, Label: f.strs["label"], Dimension: f.strs["dimension"]}
+	b := openBrain(repo)
+	ep := b.Record(text, buildOutcome(f))
+	fmt.Printf("recorded %s\n", ep.ID)
+}
+
+// buildOutcome constructs the Outcome for a record from the --reward/--label/
+// --dimension flags, or nil if --reward was not given. Returns a fresh value
+// each call so callers recording multiple episodes (record --from-file) don't
+// share one Outcome pointer across episodes.
+func buildOutcome(f flags) *engine.Outcome {
+	r, ok := f.floats["reward"]
+	if !ok {
+		return nil
+	}
+	return &engine.Outcome{Reward: r, Label: f.strs["label"], Dimension: f.strs["dimension"]}
+}
+
+// cmdRecordFromFile chunks a local file (ingest.ChunkFile) and records each
+// chunk as its own episode, in file order. Deterministic and network-free:
+// chunking is a pure function of the file's bytes.
+func cmdRecordFromFile(repo, path string, f flags) {
+	maxTokens := 450
+	if v, ok := f.floats["max-tokens"]; ok {
+		maxTokens = int(v)
+	}
+	overlap := 60
+	if v, ok := f.floats["overlap"]; ok {
+		overlap = int(v)
+	}
+	chunks, err := ingest.ChunkFile(path, maxTokens, overlap)
+	if err != nil {
+		fatal("record --from-file: %v", err)
 	}
 	b := openBrain(repo)
-	ep := b.Record(text, outcome)
-	fmt.Printf("recorded %s\n", ep.ID)
+	ids := make([]string, 0, len(chunks))
+	for _, c := range chunks {
+		ep := b.Record(c.Text, buildOutcome(f))
+		ids = append(ids, ep.ID)
+		if !f.bools["json"] {
+			fmt.Printf("recorded %s\n", ep.ID)
+		}
+	}
+	if f.bools["json"] {
+		emit(ids)
+		return
+	}
+	fmt.Printf("recorded %d episodes from %s\n", len(ids), path)
+}
+
+// cmdRecordFromURL fetches one URL (the only network call this repo's CLI
+// makes, and only when --from-url is explicitly passed), chunks its body the
+// same way cmdRecordFromFile does, and records each chunk as its own
+// episode. Not a crawl: exactly one page, no link-following.
+func cmdRecordFromURL(repo, rawURL string, f flags) {
+	maxTokens := 450
+	if v, ok := f.floats["max-tokens"]; ok {
+		maxTokens = int(v)
+	}
+	overlap := 60
+	if v, ok := f.floats["overlap"]; ok {
+		overlap = int(v)
+	}
+	chunks, err := ingest.FetchAndChunk(rawURL, maxTokens, overlap)
+	if err != nil {
+		fatal("record --from-url: %v", err)
+	}
+	b := openBrain(repo)
+	ids := make([]string, 0, len(chunks))
+	for _, c := range chunks {
+		ep := b.Record(c.Text, buildOutcome(f))
+		ids = append(ids, ep.ID)
+		if !f.bools["json"] {
+			fmt.Printf("recorded %s\n", ep.ID)
+		}
+	}
+	if f.bools["json"] {
+		emit(ids)
+		return
+	}
+	fmt.Printf("recorded %d episodes from %s\n", len(ids), rawURL)
 }
 
 func cmdReappraise(repo string, args []string) {
@@ -317,12 +431,16 @@ func cmdCheck(repo string, args []string) {
 			"allowed": v.Allowed, "alarm": v.Alarm, "vetoed_by": v.VetoedBy,
 			"penalized_by": v.PenalizedBy, "adjusted_reward": v.AdjustedReward,
 			"guaranteed": v.Guaranteed(), "fallback": v.Fallback, "reasons": v.Reasons,
+			"undetermined": v.Undetermined, "undetermined_by": v.UndeterminedBy,
 		})
 		return
 	}
 	fmt.Printf("allowed: %v  ALARM: %v\n", v.Allowed, v.Alarm)
 	if len(v.VetoedBy) > 0 {
 		fmt.Printf("vetoed by: %v\n", v.VetoedBy)
+	}
+	if v.Undetermined {
+		fmt.Printf("UNDETERMINED: %v\n", v.UndeterminedBy)
 	}
 	if v.Fallback != "" {
 		fmt.Printf("instead: %s\n", v.Fallback)

@@ -16,12 +16,22 @@ the audit trail**.
   (local + S3-compatible object storage), `libs/go/ingest` (web crawl + file
   chunking), and `libs/go/modelclients` (optional HTTP embedding/reranker/LLM
   clients).
+- **Polyglot shield**: the constraint shield alone (not the full engine) is
+  also ported to `libs/python/brain_shield` (Python), `libs/js/brain-shield`
+  (TypeScript), and `libs/rust/brain-shield` (Rust) — each conforms to the
+  same [`conformance/cases/shield.json`](conformance/cases/shield.json)
+  golden vectors as the Go reference.
 - **CLI**: `github.com/muthuishere/brain/clis/go/brain` — a thin binary over
   the library.
 - Chunking/tokenizing are delegated to the tested
   [`citenexus/golang`](https://github.com/muthuishere/citenexus) module
   rather than reimplemented.
-- Design + research: [`docs/BRAIN.md`](docs/BRAIN.md).
+- Design + research: [`docs/BRAIN.md`](docs/BRAIN.md). Feature specs land as
+  `docs/SPEC-<slug>-v1.md` — see [`docs/SPEC-record-from-file-v1.md`](docs/SPEC-record-from-file-v1.md).
+- `libs/go/engine` (the shield veto, conviction confidence, consolidation
+  clustering, and recall gating) is covered by tests under
+  `libs/go/engine/*_test.go` — the safety-critical core is proven, not just
+  asserted.
 
 ## Status — what's ready today
 
@@ -32,7 +42,11 @@ the audit trail**.
 | **Offline recall (hash embedding)** | ✅ Ready, zero network by default. |
 | **Optional embedding/reranker/LLM endpoints** | ✅ Ready (`libs/go/modelclients`), opt-in via `endpoints.json`. |
 | **S3 / object storage** (`libs/go/storage`) | ⚠️ Library-only. `S3Backend`/`LocalFsBackend` implement a generic bytes/JSON blob interface and are usable from Go code, but there is **no `engine.Store` implementation on S3 yet** and **no `--store s3` CLI flag** — `brain --repo` always uses the local file store today. |
-| **Web crawl / file chunking** (`libs/go/ingest`) | ⚠️ Library-only. `Fetch`/`Crawl`/`ChunkFile` are implemented and tested, but no CLI command wires them into `record` yet — call them from Go if you want ingest today. |
+| **File ingest** (`libs/go/ingest`) | ✅ Ready. `brain record --from-file PATH` chunks a local file (`ingest.ChunkFile`, deterministic, no network) and records one episode per chunk. |
+| **Single-URL ingest** (`brain record --from-url`) | ✅ Ready. Fetches one URL — the CLI's only network call, and only when this flag is passed — strips HTML markup if the response is HTML, and chunks it exactly like `record --from-file`. See [`docs/SPEC-record-from-url-v1.md`](docs/SPEC-record-from-url-v1.md). |
+| **Multi-page crawl** (`libs/go/ingest.Crawl`) | ⚠️ Library-only. `Crawl` (same-host BFS, depth/page-capped) is implemented and tested, but not wired into the CLI — a crawl's much larger network footprint (many pages, unbounded by default) is a bigger opt-in-policy decision than a single fetch and is deliberately deferred. Call it from Go if you want multi-page ingest today. |
+| **Constraint shield signal provenance (fail-closed)** | ✅ Ready. A hard constraint's cost is never silently treated as 0/safe when its named `signal` is omitted at `check` time — the verdict reports `undetermined:true`/`undetermined_by` and `allowed:false` instead. Configurable per constraint via `constraints.json`'s `when_absent` (`veto`/`abstain`/`assume_safe`). See [`docs/SPEC-shield-signal-provenance-v1.md`](docs/SPEC-shield-signal-provenance-v1.md). |
+| **Polyglot shield ports** (`libs/python`, `libs/js`, `libs/rust`) | ✅ Ready. The constraint shield (fail-closed semantics included) is also ported to Python (`brain_shield`), TypeScript (`@brain/shield` in `libs/js/brain-shield`), and Rust (`brain-shield` crate) — each verified byte-identical against the same [`conformance/cases/shield.json`](conformance/cases/shield.json) golden vectors in CI. Only the shield is ported so far, not the full engine (recall/consolidation/convictions remain Go-only). See [`docs/SPEC-shield-conformance-v1.md`](docs/SPEC-shield-conformance-v1.md). |
 
 ## Install
 
@@ -64,9 +78,24 @@ brain --repo ./mybrain record "Overtrading in chop bled the account" --reward -1
 brain --repo ./mybrain record "Overtrading in chop bled the account again" --reward -1
 brain --repo ./mybrain consolidate          # → distils a validated conviction
 brain --repo ./mybrain recall "overtrading" --json
-brain --repo ./mybrain check "bet the account" --reward 0.95 --signal ruin_risk=1 --json
-#   → allowed:false  alarm:true  vetoed_by:[never-ruin]   ("winning is actually losing")
+brain --repo ./mybrain check "bet the account" --reward 0.95 --signal ruin_risk=1 --signal unrepeated=0 --json
+#   → allowed:false  alarm:true  vetoed_by:[never-ruin]  guaranteed:true   ("winning is actually losing")
+
+# bulk-ingest a doc into episodic memory — one episode per chunk, no network:
+brain --repo ./mybrain record --from-file postmortem.md --reward -1 --label "postmortem"
+
+# same, but fetch a single URL instead (the CLI's only network call, opt-in):
+brain --repo ./mybrain record --from-url https://example.com/postmortem --reward -1 --label "postmortem"
 ```
+
+`check` requires *every* hard constraint's named `signal` to be supplied above
+(both `ruin_risk` and `unrepeated` — the two starter constraints from `init`) —
+that's what makes `guaranteed:true` meaningful. **Hard constraints fail closed
+by default**: drop `--signal ruin_risk=...` and the shield returns
+`allowed:false, undetermined:true, undetermined_by:["never-ruin"]` instead of
+silently treating the missing signal as safe. See
+[`docs/SPEC-shield-signal-provenance-v1.md`](docs/SPEC-shield-signal-provenance-v1.md)
+for the full rationale and the `when_absent` escape hatch.
 
 ## Endpoints (optional — works fully offline without them)
 
@@ -108,8 +137,13 @@ crypto brain" → a repo folder). Once installed, an agent should:
    decision, offer `"fallback"` instead. `"alarm": true` → "profitable but
    ruinous" — the loudest signal, surface it to the human rather than
    proceeding quietly. `"guaranteed": true` → every constraint was
-   self-evaluated in code; if false, some cost came from outside and the
-   verdict is advisory.
+   self-evaluated in code from a real supplied input; if false, some cost came
+   from outside the code or was never supplied. `"undetermined": true` → treat
+   exactly like `"allowed": false` (don't take the decision, use the
+   fallback) — it means a required hard constraint's signal was never passed
+   with `--signal`, so the shield couldn't tell if the decision was safe,
+   fails closed by default (`docs/SPEC-shield-signal-provenance-v1.md`), and
+   `"undetermined_by"` names which constraints were unresolved.
 5. **Keep multiple brains isolated** — each is its own git repo; never merge
    two brains' folders. To share one brain across agents, share the same repo
    (commit/pull) and let conflicting experiences surface as conflicts instead

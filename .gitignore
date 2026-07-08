@@ -2,3 +2,22 @@
 /brain.exe
 /dist/
 .task/
+
+# demo videos (internal CEO review artifacts — binary, not committed)
+/ceo/demos/
+*.mp4
+
+# Python
+.venv/
+__pycache__/
+*.egg-info/
+*.pyc
+.pytest_cache/
+
+# Rust
+target/
+Cargo.lock
+
+# Node/TypeScript
+node_modules/
+libs/js/*/dist/
