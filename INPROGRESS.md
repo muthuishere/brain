@@ -37,8 +37,12 @@ Division: **brain learns, toolnexus acts** (agents load playbook/skills at runti
 ### Phase C — everyone uses it
 - [x] `skills/brain/SKILL.md`: reflect/curate/playbook + skill-lifecycle how-to (2026-07-08)
 - [x] both skills updated (skills/brain + embedded copy synced; `install-skills` ships it)
-- [ ] toolnexus consumption: agents load `brain playbook` + `brain skill search` at spawn
-      — PENDING, lives in the toolnexus repo, not here
+- [x] toolnexus consumption — RESOLVED BY DESIGN (owner, 2026-07-08): no code edge in either
+      direction. toolnexus/brain/citenexus stay independent libraries (only real edge:
+      brain → citenexus). Agents compose them at the SKILL layer: any agent that wants
+      memory invokes the globally-installed brain agent skill (`brain install-skills`),
+      loads `brain playbook` / `brain skill search` before acting, records outcomes after.
+      Opt-in per use; nothing to build in toolnexus.
 
 ### Guardrails (non-negotiable)
 Evaluator outside the loop (thresholds are config the producer can't edit in-run) · rejected
