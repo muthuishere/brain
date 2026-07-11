@@ -78,6 +78,10 @@ func main() {
 		cmdSkill(repo, args)
 	case "convictions":
 		cmdConvictions(repo, args)
+	case "state":
+		cmdState(repo, args)
+	case "wake":
+		cmdWake(repo, args)
 	case "status":
 		cmdStatus(repo)
 	case "install-skills":
@@ -130,6 +134,17 @@ commands:
   skill search [--domain D] [--min-success R] · skill metrics ID [--since TS]
   skill deprecate ID · skill rollback ID --to N
   convictions [--json]             the brain's current point of view
+  state set <key> <value> --ttl DUR | --static [--source WHO] [--json]
+                                     volatile working memory (state.ndjson, latest-per-key).
+                                     --ttl (e.g. 5m, 900s) is REQUIRED unless --static: a value
+                                     with no freshness bound would be served as current forever
+                                     after its writer dies. See docs/SPEC-orientation-layer-v1.md.
+  state get <key> [--json]           value + fresh|stale|unknown|static + age (never stale-as-fresh)
+  state list [--stale] [--json]      all keys; --stale shows only past-TTL keys
+  state heartbeat <name> [--ttl DUR] [--note N]   sugar: set heartbeat.<name> (default ttl 5m)
+  wake [--as DESK] [--json]          orientation: CHARTER (objective+convictions) + RISK envelope
+                                     + STATE (stale/unknown flagged; stale heartbeat marks the
+                                     whole STATE block suspect). Read this at session start.
   status                           objective + counts
   install-skills                   install the agent skill + seed ~/.config/brain/config.json
 
@@ -571,7 +586,7 @@ func parseFlags(args []string) flags {
 			continue
 		}
 		name := strings.TrimLeft(a, "-")
-		if name == "json" || name == "forget" || name == "apply" || name == "evolve" {
+		if name == "json" || name == "forget" || name == "apply" || name == "evolve" || name == "static" || name == "stale" {
 			f.bools[name] = true
 			continue
 		}

@@ -60,6 +60,10 @@ If a brain folder isn't a git repo yet: `git -C "$REPO" init` then `brain --repo
 
 | Intent | Command |
 |---|---|
+| **Orient at session start** (charter+risk+live state) | `brain --repo "$REPO" wake --as DESK --json` |
+| Write live desk state (working memory) | `brain --repo "$REPO" state set positions.DESK "0 open" --ttl 12h` |
+| Heartbeat a loop (so wake knows it's alive) | `brain --repo "$REPO" state heartbeat DESK --ttl 5m` |
+| Read state (never serves stale as fresh) | `brain --repo "$REPO" state get KEY --json` · `state list [--stale]` |
 | Set the current goal | `brain --repo "$REPO" objective "preserve capital"` |
 | Record an experience | `brain --repo "$REPO" record "TEXT" --reward -1 --label loss` |
 | Record a plain fact (no outcome) | `brain --repo "$REPO" record "TEXT"` |
@@ -78,6 +82,14 @@ If a brain folder isn't a git repo yet: `git -C "$REPO" init` then `brain --repo
 `reward` is signed feedback along any axis (money is one — `--dimension correctness`
 etc. work too). Losses teach more than equal wins; a single unrepeated result never
 becomes a belief.
+
+**Orientation layer (state + wake).** Run `wake` at the start of every session / loop
+tick to load the charter, the risk envelope, and live STATE in one read — instead of
+re-asking the human. Write volatile state as it changes (`state set …`, `heartbeat …`).
+Every state value needs a `--ttl` (or `--static`): a value past its TTL reads back
+**STALE**, never fresh, and a stale desk heartbeat makes `wake` mark the whole STATE
+block "probably DOWN" — so a lapsed writer degrades to a safe "unknown", never a
+confabulated "it's running". Stable facts (ports/paths) still live in your CLAUDE.md.
 
 ## Commit after every mutation — git history IS the audit trail
 
