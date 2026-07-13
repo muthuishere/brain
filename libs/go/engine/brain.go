@@ -159,15 +159,30 @@ func episodeID(namespace, text string, version int) string {
 
 // Record stores a raw experience. Cheap and synchronous — no model call.
 func (b *Brain) Record(text string, outcome *Outcome) Episode {
+	return b.RecordWithCue("", text, outcome)
+}
+
+// RecordWithCue records an episode whose retrieval cue differs from its verbatim
+// text. Used by frontmatter-aware ingestion, where the file's description is the
+// cue (what an operator recalls by) while the body is the stored evidence. An
+// empty cue falls back to the text, preserving the plain Record behavior exactly.
+func (b *Brain) RecordWithCue(cue, text string, outcome *Outcome) Episode {
 	text = strings.TrimSpace(text)
+	cue = strings.TrimSpace(cue)
+	embedText := text
+	if cue == "" {
+		cue = text
+	} else if cue != text {
+		embedText = cue + " " + text // fold the cue into the retrieval vector
+	}
 	version := b.store.NextVersion()
 	ep := Episode{
 		ID:        episodeID(b.namespace, text, version),
 		Text:      text,
-		Cue:       text,
+		Cue:       cue,
 		Version:   version,
 		Ts:        b.now(),
-		Embedding: b.embedder.Embed(text),
+		Embedding: b.embedder.Embed(embedText),
 		Outcome:   outcome,
 	}
 	b.store.AddEpisode(ep)

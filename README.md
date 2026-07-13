@@ -1,7 +1,8 @@
 # brain
 
-A Go library and CLI that turns a **folder (a git repo) into a persistent,
-evidence-first brain**. It records experiences, recalls grounded
+A Go library and CLI that turns a **plain folder into a persistent,
+evidence-first brain** (keep it in git for a free audit trail — `init` writes
+plain files, it does not run `git init` for you). It records experiences, recalls grounded
 cite-or-abstain answers, distils repeated experience into validated convictions,
 and runs a **deterministic constraint shield** that vetoes "profitable but
 ruinous" decisions.

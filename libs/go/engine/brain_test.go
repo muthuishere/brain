@@ -209,6 +209,51 @@ func TestConsolidateFormsConvictionFromRepeatedConsistentEpisodes(t *testing.T) 
 	}
 }
 
+// TestConsolidateDoesNotDeleteExistingConvictionOnLaterConflict is the
+// regression test the CEO asked for (CEO-BUG-REPORT.md, 2026-07-13): after a
+// conviction has formed, a later consolidation that finds a CONFLICT (mixed
+// valence in a cluster) must NOT zero out or delete the existing conviction —
+// the brain must not "forget exactly when it learns more". Root cause of the
+// live symptom was dormancy-visibility (an objective edit dormanted it), not
+// deletion; this pins that consolidate itself never removes a conviction.
+func TestConsolidateDoesNotDeleteExistingConvictionOnLaterConflict(t *testing.T) {
+	b := NewWithStore(fakes.FakeEmbedding{}, nil, "ns", nil, 10, NewInMemoryStore(), nil)
+	b.SetObjective("ship one paying customer per day", "ceo")
+
+	// Three consistent negatives → one conviction.
+	b.Record("overtrading in chop bled the account", &Outcome{Reward: -0.9, Baseline: 0})
+	b.Record("overtrading again in chop bled the account", &Outcome{Reward: -0.9, Baseline: 0})
+	b.Record("overtrading in chop keeps bleeding the account", &Outcome{Reward: -0.85, Baseline: 0})
+	r1 := b.Consolidate(2, 0.66, 1, false, 0)
+	if r1.ConvictionsFormed != 1 || len(b.Convictions(false)) != 1 {
+		t.Fatalf("setup: expected exactly one conviction, got formed=%d active=%d", r1.ConvictionsFormed, len(b.Convictions(false)))
+	}
+	firstID := b.Convictions(false)[0].ID
+
+	// Now add positive-reward episodes sharing the same tokens → the cluster
+	// becomes mixed-valence and consolidation reports a conflict.
+	b.Record("overtrading in chop actually made the account money", &Outcome{Reward: 0.9, Baseline: 0})
+	b.Record("overtrading in chop grew the account nicely", &Outcome{Reward: 0.88, Baseline: 0})
+	b.Record("overtrading in chop was great for the account", &Outcome{Reward: 0.9, Baseline: 0})
+	r2 := b.Consolidate(2, 0.66, 1, false, 0)
+
+	if r2.ConflictsSurfaced < 1 {
+		t.Fatalf("expected the mixed-valence cluster to surface a conflict, got %+v", r2)
+	}
+	if r2.TotalConvictions == 0 || len(b.Convictions(false)) == 0 {
+		t.Fatalf("BUG: a later conflict zeroed out convictions (total=%d active=%d) — the brain must not forget when it learns more", r2.TotalConvictions, len(b.Convictions(false)))
+	}
+	present := false
+	for _, cv := range b.Convictions(true) { // include dormant: prove it was neither deleted nor silently dropped
+		if cv.ID == firstID {
+			present = true
+		}
+	}
+	if !present {
+		t.Fatalf("BUG: the original conviction %s disappeared from the store after a conflicting consolidate", firstID)
+	}
+}
+
 // TestConsolidateForgetsStaleUnsupportedEpisodes exercises the forget path: a
 // stale (past forgetAfterHours), unsupported (no cluster claimed it), non-
 // positive-salience (nil outcome) episode must decay.

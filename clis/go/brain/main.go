@@ -133,7 +133,7 @@ commands:
   skill log ID --outcome ok|fail [--task T] [--cost C]
   skill search [--domain D] [--min-success R] · skill metrics ID [--since TS]
   skill deprecate ID · skill rollback ID --to N
-  convictions [--json]             the brain's current point of view
+  convictions [--all] [--json]     the brain's current point of view (--all includes dormant)
   state set <key> <value> --ttl DUR | --static [--source WHO] [--json]
                                      volatile working memory (state.ndjson, latest-per-key).
                                      --ttl (e.g. 5m, 900s) is REQUIRED unless --static: a value
@@ -334,14 +334,14 @@ func cmdRecordFromFile(repo, path string, f flags) {
 	if v, ok := f.floats["overlap"]; ok {
 		overlap = int(v)
 	}
-	chunks, err := ingest.ChunkFile(path, maxTokens, overlap)
+	chunks, cue, err := ingest.ChunkFileFM(path, maxTokens, overlap)
 	if err != nil {
 		fatal("record --from-file: %v", err)
 	}
 	b := openBrain(repo)
 	ids := make([]string, 0, len(chunks))
 	for _, c := range chunks {
-		ep := b.Record(c.Text, buildOutcome(f))
+		ep := b.RecordWithCue(cue, c.Text, buildOutcome(f))
 		ids = append(ids, ep.ID)
 		if !f.bools["json"] {
 			fmt.Printf("recorded %s\n", ep.ID)
@@ -507,7 +507,8 @@ func cmdConsolidate(repo string, args []string) {
 
 func cmdConvictions(repo string, args []string) {
 	f := parseFlags(args)
-	cvs := openBrain(repo).Convictions(false)
+	all := f.bools["all"]
+	cvs := openBrain(repo).Convictions(all)
 	if f.bools["json"] {
 		emit(cvs)
 		return
@@ -517,7 +518,11 @@ func cmdConvictions(repo string, args []string) {
 		return
 	}
 	for _, cv := range cvs {
-		fmt.Printf("- [%s] %s (confidence %.2f, n=%d)\n", cv.Valence, cv.Statement, cv.Confidence, cv.SupportCount)
+		tag := ""
+		if cv.Dormant {
+			tag = " [dormant]"
+		}
+		fmt.Printf("- [%s]%s %s (confidence %.2f, n=%d)\n", cv.Valence, tag, cv.Statement, cv.Confidence, cv.SupportCount)
 	}
 }
 
@@ -525,6 +530,15 @@ func cmdConvictions(repo string, args []string) {
 // seeds ~/.config/brain/config.json — everything the agent needs, from the binary
 // itself (the skill + example config are embedded). Works on every OS.
 func cmdInstallSkills(args []string) {
+	for _, a := range args {
+		if a == "-h" || a == "--help" {
+			fmt.Println("usage: brain install-skills [--skill-dir DIR]")
+			fmt.Println("  installs the bundled agent skill (SKILL.md) into the Claude skills dir")
+			fmt.Println("  (default ~/.claude/skills/brain) and seeds ~/.config/brain/config.json if")
+			fmt.Println("  none exists. --help prints this and makes no changes.")
+			return
+		}
+	}
 	f := parseFlags(args)
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -566,7 +580,13 @@ func cmdStatus(repo string) {
 	}
 	fmt.Printf("repo        : %s\n", repo)
 	fmt.Printf("objective   : %s\n", obj)
-	fmt.Printf("convictions : %d\n", len(b.Convictions(false)))
+	active := len(b.Convictions(false))
+	dormant := len(b.Convictions(true)) - active
+	if dormant > 0 {
+		fmt.Printf("convictions : %d active (%d dormant — `convictions --all` to see)\n", active, dormant)
+	} else {
+		fmt.Printf("convictions : %d\n", active)
+	}
 }
 
 // --- flag parsing (tiny, dependency-free) -----------------------------------
@@ -586,7 +606,7 @@ func parseFlags(args []string) flags {
 			continue
 		}
 		name := strings.TrimLeft(a, "-")
-		if name == "json" || name == "forget" || name == "apply" || name == "evolve" || name == "static" || name == "stale" {
+		if name == "json" || name == "forget" || name == "apply" || name == "evolve" || name == "static" || name == "stale" || name == "all" {
 			f.bools[name] = true
 			continue
 		}
