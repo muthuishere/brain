@@ -1,5 +1,7 @@
 # brain
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/muthuishere/brain.svg)](https://pkg.go.dev/github.com/muthuishere/brain)
+
 A Go library and CLI that turns a **plain folder into a persistent,
 evidence-first brain** (keep it in git for a free audit trail — `init` writes
 plain files, it does not run `git init` for you). It records experiences, recalls grounded
@@ -16,7 +18,7 @@ the audit trail**.
   engine (episodic memory, shield, consolidation). Also `libs/go/storage`
   (local + S3-compatible object storage), `libs/go/ingest` (web crawl + file
   chunking), and `libs/go/modelclients` (optional HTTP embedding/reranker/LLM
-  clients).
+  clients). Docs: [pkg.go.dev/github.com/muthuishere/brain](https://pkg.go.dev/github.com/muthuishere/brain).
 - **Polyglot shield**: the constraint shield alone (not the full engine) is
   also ported to `libs/python/brain_shield` (Python), `libs/js/brain-shield`
   (TypeScript), and `libs/rust/brain-shield` (Rust) — each conforms to the
